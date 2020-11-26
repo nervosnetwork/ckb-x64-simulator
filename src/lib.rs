@@ -19,6 +19,7 @@ use constants::{
     SOURCE_GROUP_OUTPUT, SOURCE_HEADER_DEP, SOURCE_INPUT, SOURCE_OUTPUT,
 };
 use serde_derive::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_void};
 
@@ -27,6 +28,7 @@ pub struct RunningSetup {
     pub is_lock_script: bool,
     pub is_output: bool,
     pub script_index: u64,
+    pub native_binaries: HashMap<Vec<u8>, String>,
 }
 
 lazy_static! {
@@ -277,6 +279,69 @@ pub extern "C" fn ckb_load_cell_data(
     };
     store_data(ptr, len, offset, &cell_data);
     CKB_SUCCESS
+}
+
+extern "C" {
+    fn simulator_internal_dlopen2(
+        native_library_path: *const u8,
+        code: *const u8,
+        length: u64,
+        aligned_addr: *mut u8,
+        aligned_size: u64,
+        handle: *mut *mut c_void,
+        consumed_size: *mut u64,
+    ) -> c_int;
+}
+
+#[no_mangle]
+pub extern "C" fn ckb_dlopen2(
+    dep_cell_hash: *const u8,
+    hash_type: u8,
+    aligned_addr: *mut u8,
+    aligned_size: u64,
+    handle: *mut *mut c_void,
+    consumed_size: *mut u64,
+) -> c_int {
+    let dep_cell_hash = unsafe {
+        let ptr = dep_cell_hash.as_ref().expect("casting pointer");
+        std::slice::from_raw_parts(ptr, 32)
+    };
+    let mut buffer = vec![];
+    buffer.extend_from_slice(dep_cell_hash);
+    buffer.push(hash_type);
+    let filename = SETUP
+        .native_binaries
+        .get(&buffer)
+        .expect("cannot locate native binary!");
+    let cell_dep = TRANSACTION
+        .mock_info
+        .cell_deps
+        .iter()
+        .find(|cell_dep| {
+            if hash_type == 1 {
+                cell_dep
+                    .output
+                    .type_()
+                    .to_opt()
+                    .map(|t| t.calc_script_hash().as_slice() == dep_cell_hash)
+                    .unwrap_or(false)
+            } else {
+                CellOutput::calc_data_hash(&cell_dep.data).as_slice() == dep_cell_hash
+            }
+        })
+        .expect("cannot locate cell dep");
+    let cell_data = cell_dep.data.as_ref();
+    unsafe {
+        simulator_internal_dlopen2(
+            filename.as_str().as_ptr(),
+            cell_data.as_ptr(),
+            cell_data.len() as u64,
+            aligned_addr,
+            aligned_size,
+            handle,
+            consumed_size,
+        )
+    }
 }
 
 fn fetch_cell(index: u64, source: u64) -> Result<(CellOutput, Bytes), c_int> {
