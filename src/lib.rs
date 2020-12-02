@@ -595,5 +595,5 @@ fn store_data(ptr: *mut c_void, len: *mut u64, offset: u64, data: &[u8]) {
     let full_size = data_len - offset;
     let real_size = std::cmp::min(size, full_size);
     *size_ptr = full_size;
-    buffer.copy_from_slice(&data[offset as usize..(offset + real_size) as usize]);
+    buffer[..real_size as usize].copy_from_slice(&data[offset as usize..(offset + real_size) as usize]);
 }
