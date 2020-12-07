@@ -1,7 +1,7 @@
 [package]
 name = "ckb-x64-simulator"
 description = "A simulator that allows running CKB smart contracts on x64 environment for tooling benefits"
-version = "0.3.0"
+version = "0.4.0"
 license = "MIT"
 authors = ["Nervos Core Dev <dev@nervos.org>"]
 edition = "2018"
