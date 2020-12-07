@@ -28,7 +28,7 @@ pub struct RunningSetup {
     pub is_lock_script: bool,
     pub is_output: bool,
     pub script_index: u64,
-    pub native_binaries: HashMap<Vec<u8>, String>,
+    pub native_binaries: HashMap<String, String>,
 }
 
 lazy_static! {
@@ -309,9 +309,10 @@ pub extern "C" fn ckb_dlopen2(
     let mut buffer = vec![];
     buffer.extend_from_slice(dep_cell_hash);
     buffer.push(hash_type);
+    let key = format!("0x{}", faster_hex::hex_string(&buffer).expect("faster hex"));
     let filename = SETUP
         .native_binaries
-        .get(&buffer)
+        .get(&key)
         .expect("cannot locate native binary!");
     let cell_dep = TRANSACTION
         .mock_info
