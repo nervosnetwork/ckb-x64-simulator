@@ -1,5 +1,6 @@
 #include <dlfcn.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #define ERROR_MEMORY_NOT_ENOUGH -23
 #define ERROR_DYNAMIC_LOADING -24
@@ -19,7 +20,11 @@ int simulator_internal_dlopen2(const char* native_library_path,
   }
   *consumed_size = aligned_length;
   *handle = dlopen(native_library_path, RTLD_NOW);
-  return -1;
+  if (handle == NULL) {
+    printf("Error occurs in dlopen: %s\n", dlerror());
+    return -1;
+  }
+  return 0;
 }
 
 void* ckb_dlsym(void* handle, const char* symbol) {
