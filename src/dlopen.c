@@ -20,7 +20,7 @@ int simulator_internal_dlopen2(const char* native_library_path,
   }
   *consumed_size = aligned_length;
   *handle = dlopen(native_library_path, RTLD_NOW);
-  if (handle == NULL) {
+  if (*handle == NULL) {
     printf("Error occurs in dlopen: %s\n", dlerror());
     return -1;
   }
