@@ -309,7 +309,7 @@ pub extern "C" fn ckb_dlopen2(
     let mut buffer = vec![];
     buffer.extend_from_slice(dep_cell_hash);
     buffer.push(hash_type);
-    let key = format!("0x{}", faster_hex::hex_string(&buffer).expect("faster hex"));
+    let key = format!("0x{}", faster_hex::hex_string(&buffer));
     let filename = SETUP
         .native_binaries
         .get(&key)
@@ -596,5 +596,6 @@ fn store_data(ptr: *mut c_void, len: *mut u64, offset: u64, data: &[u8]) {
     let full_size = data_len - offset;
     let real_size = std::cmp::min(size, full_size);
     *size_ptr = full_size;
-    buffer[..real_size as usize].copy_from_slice(&data[offset as usize..(offset + real_size) as usize]);
+    buffer[..real_size as usize]
+        .copy_from_slice(&data[offset as usize..(offset + real_size) as usize]);
 }
