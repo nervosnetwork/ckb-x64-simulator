@@ -20,14 +20,18 @@ use constants::{
 };
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::ffi::CStr;
+use std::ffi::{CStr, OsStr};
 use std::os::raw::{c_char, c_int, c_void};
+use std::os::unix::ffi::OsStrExt;
+use std::os::unix::process::CommandExt;
+use std::process::Command;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct RunningSetup {
     pub is_lock_script: bool,
     pub is_output: bool,
     pub script_index: u64,
+    pub vm_version: i32,
     pub native_binaries: HashMap<String, String>,
 }
 
@@ -47,9 +51,72 @@ lazy_static! {
     };
 }
 
+fn assert_vm_version() {
+    if SETUP.vm_version != 1 {
+        panic!(
+            "Currently running setup vm_version({}) not support this syscall",
+            SETUP.vm_version
+        );
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn ckb_exit(code: i8) -> i32 {
     std::process::exit(code.into());
+}
+
+#[no_mangle]
+pub extern "C" fn ckb_vm_version() -> c_int {
+    assert_vm_version();
+    SETUP.vm_version
+}
+
+#[no_mangle]
+pub extern "C" fn ckb_current_cycles() -> u64 {
+    assert_vm_version();
+    // NOTE: return a fake number since this value is meaningless in simulator
+    333
+}
+
+/// The binary key string is 0x{code_hash + hash_type + offset.to_be_bytes() + length.to_be_bytes()}
+#[no_mangle]
+pub extern "C" fn ckb_exec_cell(
+    code_hash: *const u8,
+    hash_type: u8,
+    offset: u32,
+    length: u32,
+    argc: i32,
+    argv: *const *const u8,
+) -> c_int {
+    assert_vm_version();
+
+    let code_hash = unsafe {
+        let ptr = code_hash.as_ref().expect("casting pointer");
+        std::slice::from_raw_parts(ptr, 32)
+    };
+    let mut buffer = vec![];
+    buffer.extend_from_slice(code_hash);
+    buffer.push(hash_type);
+    buffer.extend_from_slice(&offset.to_be_bytes()[..]);
+    buffer.extend_from_slice(&length.to_be_bytes()[..]);
+    let key = format!("0x{}", faster_hex::hex_string(&buffer));
+    let filename = SETUP
+        .native_binaries
+        .get(&key)
+        .expect("cannot locate native binary for ckb_exec syscall!");
+    let args: &[&CStr] = unsafe {
+        let ptr = argv.as_ref().expect("casting pointer");
+        std::mem::transmute::<&[*const u8], &[&CStr]>(std::slice::from_raw_parts(
+            ptr,
+            argc as usize,
+        ))
+    };
+    let owned_args = args
+        .iter()
+        .map(|cstr| OsStr::from_bytes(cstr.to_bytes()))
+        .collect::<Vec<_>>();
+    let err = Command::new(filename).args(owned_args).exec();
+    panic!("ckb_exec error: {:?}", err);
 }
 
 #[no_mangle]
