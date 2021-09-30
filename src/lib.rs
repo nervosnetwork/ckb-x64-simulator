@@ -3,7 +3,7 @@ pub mod constants;
 #[macro_use]
 extern crate lazy_static;
 
-use ckb_standalone_debugger::transaction::{MockTransaction, ReprMockTransaction};
+use ckb_mock_tx_types::{MockTransaction, ReprMockTransaction};
 use ckb_types::{
     bytes::Bytes,
     core::{cell::CellMetaBuilder, Capacity, HeaderView},
