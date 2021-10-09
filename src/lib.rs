@@ -89,6 +89,9 @@ pub extern "C" fn ckb_exec_cell(
     argv: *const *const u8,
 ) -> c_int {
     assert_vm_version();
+    if argc == 0 {
+        panic!("argc must larger than 0 to use ckb_exec_cell");
+    }
 
     let code_hash = unsafe {
         let ptr = code_hash.as_ref().expect("casting pointer");
@@ -104,18 +107,21 @@ pub extern "C" fn ckb_exec_cell(
         .native_binaries
         .get(&key)
         .expect("cannot locate native binary for ckb_exec syscall!");
-    let args: &[&CStr] = unsafe {
+    let args: &[*const u8] = unsafe {
         let ptr = argv.as_ref().expect("casting pointer");
-        std::mem::transmute::<&[*const u8], &[&CStr]>(std::slice::from_raw_parts(
-            ptr,
-            argc as usize,
-        ))
+        std::slice::from_raw_parts(ptr, argc as usize)
     };
     let owned_args = args
-        .iter()
-        .map(|cstr| OsStr::from_bytes(cstr.to_bytes()))
+        .into_iter()
+        .map(|arg| unsafe {
+            let length = libc::strlen(*arg as *const i8);
+            let slice = std::slice::from_raw_parts(*arg, length);
+            OsStr::from_bytes(slice)
+        })
         .collect::<Vec<_>>();
-    let err = Command::new(filename).args(owned_args).exec();
+    let arg0 = owned_args[0].clone();
+    let rest_args = &owned_args[1..];
+    let err = Command::new(filename).args(rest_args).arg0(arg0).exec();
     panic!("ckb_exec error: {:?}", err);
 }
 
