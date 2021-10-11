@@ -20,11 +20,8 @@ use constants::{
 };
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::ffi::{CStr, OsStr};
+use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
-use std::os::unix::ffi::OsStrExt;
-use std::os::unix::process::CommandExt;
-use std::process::Command;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct RunningSetup {
@@ -85,11 +82,10 @@ pub extern "C" fn ckb_exec_cell(
     hash_type: u8,
     offset: u32,
     length: u32,
-    argc: i32,
+    _argc: i32,
     argv: *const *const u8,
 ) -> c_int {
     assert_vm_version();
-
     let code_hash = unsafe {
         let ptr = code_hash.as_ref().expect("casting pointer");
         std::slice::from_raw_parts(ptr, 32)
@@ -104,19 +100,11 @@ pub extern "C" fn ckb_exec_cell(
         .native_binaries
         .get(&key)
         .expect("cannot locate native binary for ckb_exec syscall!");
-    let args: &[&CStr] = unsafe {
-        let ptr = argv.as_ref().expect("casting pointer");
-        std::mem::transmute::<&[*const u8], &[&CStr]>(std::slice::from_raw_parts(
-            ptr,
-            argc as usize,
-        ))
-    };
-    let owned_args = args
-        .iter()
-        .map(|cstr| OsStr::from_bytes(cstr.to_bytes()))
-        .collect::<Vec<_>>();
-    let err = Command::new(filename).args(owned_args).exec();
-    panic!("ckb_exec error: {:?}", err);
+    let filename_cstring = CString::new(filename.as_bytes().to_vec()).unwrap();
+    unsafe {
+        let args = argv as *const *const i8;
+        libc::execvp(filename_cstring.as_ptr(), args)
+    }
 }
 
 #[no_mangle]
