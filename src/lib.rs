@@ -86,10 +86,7 @@ pub extern "C" fn ckb_exec_cell(
     argv: *const *const u8,
 ) -> c_int {
     assert_vm_version();
-    let code_hash = unsafe {
-        let ptr = code_hash.as_ref().expect("casting pointer");
-        std::slice::from_raw_parts(ptr, 32)
-    };
+    let code_hash = unsafe { std::slice::from_raw_parts(code_hash, 32) };
     let mut buffer = vec![];
     buffer.extend_from_slice(code_hash);
     buffer.push(hash_type);
@@ -357,10 +354,7 @@ pub extern "C" fn ckb_dlopen2(
     handle: *mut *mut c_void,
     consumed_size: *mut u64,
 ) -> c_int {
-    let dep_cell_hash = unsafe {
-        let ptr = dep_cell_hash.as_ref().expect("casting pointer");
-        std::slice::from_raw_parts(ptr, 32)
-    };
+    let dep_cell_hash = unsafe { std::slice::from_raw_parts(dep_cell_hash, 32) };
     let mut buffer = vec![];
     buffer.extend_from_slice(dep_cell_hash);
     buffer.push(hash_type);
@@ -642,10 +636,7 @@ fn fetch_current_script() -> Script {
 fn store_data(ptr: *mut c_void, len: *mut u64, offset: u64, data: &[u8]) {
     let size_ptr = unsafe { len.as_mut().expect("casting pointer") };
     let size = *size_ptr;
-    let buffer = unsafe {
-        let ptr = (ptr as *mut u8).as_mut().expect("casting pointer");
-        std::slice::from_raw_parts_mut(ptr, size as usize)
-    };
+    let buffer = unsafe { std::slice::from_raw_parts_mut(ptr as *mut u8, size as usize) };
     let data_len = data.len() as u64;
     let offset = std::cmp::min(data_len, offset);
     let full_size = data_len - offset;
