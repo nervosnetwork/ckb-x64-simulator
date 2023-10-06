@@ -8,7 +8,7 @@ use ckb_types::{
     bytes::Bytes,
     core::{cell::CellMetaBuilder, Capacity, HeaderView},
     packed::{self, Byte32, CellInput, CellOutput, Script},
-    prelude::{Entity, Unpack},
+    prelude::*,
 };
 use constants::{
     CELL_FIELD_CAPACITY, CELL_FIELD_DATA_HASH, CELL_FIELD_LOCK, CELL_FIELD_LOCK_HASH,
