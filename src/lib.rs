@@ -104,6 +104,9 @@ pub extern "C" fn ckb_exec_cell(
         buffer.extend_from_slice(&length.to_be_bytes()[..]);
         let key = format!("0x{}", faster_hex::hex_string(&buffer));
         filename = SETUP.native_binaries.get(&key);
+        if filename.is_some() {
+            break;
+        }
     }
     let filename = filename.expect("cannot locate native binary for ckb_exec syscall!");
 
