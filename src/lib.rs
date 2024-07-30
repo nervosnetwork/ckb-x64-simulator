@@ -24,12 +24,19 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
 
 #[derive(Clone, Serialize, Deserialize)]
+pub enum RunningType {
+    Executable,
+    DynamicLib,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct RunningSetup {
     pub is_lock_script: bool,
     pub is_output: bool,
     pub script_index: u64,
     pub vm_version: i32,
     pub native_binaries: HashMap<String, String>,
+    pub run_type: Option<RunningType>,
 }
 
 lazy_static! {
@@ -82,25 +89,48 @@ pub extern "C" fn ckb_exec_cell(
     hash_type: u8,
     offset: u32,
     length: u32,
-    _argc: i32,
+    argc: i32,
     argv: *const *const u8,
 ) -> c_int {
     assert_vm_version();
-    let code_hash = unsafe { std::slice::from_raw_parts(code_hash, 32) };
-    let mut buffer = vec![];
-    buffer.extend_from_slice(code_hash);
-    buffer.push(hash_type);
-    buffer.extend_from_slice(&offset.to_be_bytes()[..]);
-    buffer.extend_from_slice(&length.to_be_bytes()[..]);
-    let key = format!("0x{}", faster_hex::hex_string(&buffer));
-    let filename = SETUP
-        .native_binaries
-        .get(&key)
-        .expect("cannot locate native binary for ckb_exec syscall!");
-    let filename_cstring = CString::new(filename.as_bytes().to_vec()).unwrap();
-    unsafe {
-        let args = argv as *const *const i8;
-        libc::execvp(filename_cstring.as_ptr(), args)
+
+    let mut filename = None;
+    for ht in [hash_type, 0xFF] {
+        let code_hash = unsafe { std::slice::from_raw_parts(code_hash, 32) };
+        let mut buffer = vec![];
+        buffer.extend_from_slice(code_hash);
+        buffer.push(ht);
+        buffer.extend_from_slice(&offset.to_be_bytes()[..]);
+        buffer.extend_from_slice(&length.to_be_bytes()[..]);
+        let key = format!("0x{}", faster_hex::hex_string(&buffer));
+        filename = SETUP.native_binaries.get(&key);
+    }
+    let filename = filename.expect("cannot locate native binary for ckb_exec syscall!");
+
+    match SETUP.run_type.as_ref().unwrap_or(&RunningType::Executable) {
+        RunningType::Executable => {
+            let filename_cstring = CString::new(filename.as_bytes().to_vec()).unwrap();
+            unsafe {
+                let args = argv as *const *const i8;
+                libc::execvp(filename_cstring.as_ptr(), args)
+            }
+        }
+        RunningType::DynamicLib => {
+            use core::ffi::c_int;
+            type CkbMainFunc<'a> = libloading::Symbol<
+                'a,
+                unsafe extern "C" fn(argc: c_int, argv: *const *const i8) -> i8,
+            >;
+
+            unsafe {
+                let lib = libloading::Library::new(filename).expect("Load library");
+                let func: CkbMainFunc = lib
+                    .get(b"__ckb_std_main")
+                    .expect("load function : __ckb_std_main");
+                let args = argv as *const *const i8;
+                std::process::exit(func(argc, args).into())
+            }
+        }
     }
 }
 
