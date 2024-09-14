@@ -16,6 +16,7 @@ crate-type = ["lib", "staticlib", "cdylib"]
 [dependencies]
 ckb-mock-tx-types = "0.118.0"
 ckb-types = "0.118.0"
+ckb-hash = "0.118.0"
 faster-hex = "0.6.1"
 lazy_static = "1.4"
 serde = "1.0"

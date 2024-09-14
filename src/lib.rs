@@ -1,5 +1,15 @@
 pub mod constants;
 
+pub mod spawn;
+pub use spawn::*;
+
+mod global_data;
+mod process_info;
+mod utils;
+
+use global_data::GlobalData;
+use process_info::{Process, TxContext};
+
 #[macro_use]
 extern crate lazy_static;
 
@@ -56,7 +66,7 @@ lazy_static! {
 }
 
 fn assert_vm_version() {
-    if SETUP.vm_version != 1 {
+    if SETUP.vm_version != 1 && SETUP.vm_version != 2 {
         panic!(
             "Currently running setup vm_version({}) not support this syscall",
             SETUP.vm_version
@@ -94,45 +104,44 @@ pub extern "C" fn ckb_exec_cell(
 ) -> c_int {
     assert_vm_version();
 
-    let mut filename = None;
-    for ht in [hash_type, 0xFF] {
-        let code_hash = unsafe { std::slice::from_raw_parts(code_hash, 32) };
-        let mut buffer = vec![];
-        buffer.extend_from_slice(code_hash);
-        buffer.push(ht);
-        buffer.extend_from_slice(&offset.to_be_bytes()[..]);
-        buffer.extend_from_slice(&length.to_be_bytes()[..]);
-        let key = format!("0x{}", faster_hex::hex_string(&buffer));
-        filename = SETUP.native_binaries.get(&key);
-        if filename.is_some() {
-            break;
-        }
-    }
-    let filename = filename.expect("cannot locate native binary for ckb_exec syscall!");
+    let sim_path = utils::get_simulator_path(
+        unsafe { std::slice::from_raw_parts(code_hash, 32) },
+        hash_type,
+        offset,
+        length,
+    );
+    let sim_path = sim_path.expect("cannot locate native binary for ckb_exec syscall!");
 
     match SETUP.run_type.as_ref().unwrap_or(&RunningType::Executable) {
         RunningType::Executable => {
-            let filename_cstring = CString::new(filename.as_bytes().to_vec()).unwrap();
+            let filename_cstring = CString::new(sim_path.as_bytes().to_vec()).unwrap();
             unsafe {
                 let args = argv as *const *const i8;
                 libc::execvp(filename_cstring.as_ptr(), args)
             }
         }
         RunningType::DynamicLib => {
-            use core::ffi::c_int;
-            type CkbMainFunc<'a> = libloading::Symbol<
-                'a,
-                unsafe extern "C" fn(argc: c_int, argv: *const *const i8) -> i8,
-            >;
+            use utils::CkbNativeSimulator;
 
-            unsafe {
-                let lib = libloading::Library::new(filename).expect("Load library");
-                let func: CkbMainFunc = lib
-                    .get(b"__ckb_std_main")
-                    .expect("load function : __ckb_std_main");
-                let args = argv as *const *const i8;
-                std::process::exit(func(argc, args).into())
-            }
+            let tx_ctx_id = GlobalData::locked().set_tx(process_info::TxContext::default());
+            TxContext::set_ctx_id(tx_ctx_id.clone());
+
+            let sim = CkbNativeSimulator::new_by_hash(code_hash, hash_type, offset, length);
+            let args = utils::to_vec_args(argc, argv as *const *const i8);
+
+            let t = std::thread::spawn(move || {
+                let proc_id = get_tx_mut!(&tx_ctx_id).new_process(None, &[]);
+
+                Process::set_ctx_id(proc_id.clone());
+                TxContext::set_ctx_id(tx_ctx_id.clone());
+
+                sim.update_script_info(tx_ctx_id.clone(), proc_id.clone());
+
+                sim.ckb_std_main(args)
+                // get_cur_proc!().notify();
+            });
+
+            t.join().expect("exec dylib") as c_int
         }
     }
 }
@@ -425,6 +434,13 @@ pub extern "C" fn ckb_dlopen2(
             consumed_size,
         )
     }
+}
+
+#[no_mangle]
+pub extern "C" fn set_script_info(ptr: *const std::ffi::c_void, tx_ctx_id: u64, proc_ctx_id: u64) {
+    GlobalData::set_ptr(ptr);
+    TxContext::set_ctx_id(tx_ctx_id.into());
+    Process::set_ctx_id(proc_ctx_id.into());
 }
 
 fn fetch_cell(index: u64, source: u64) -> Result<(CellOutput, Bytes), c_int> {
