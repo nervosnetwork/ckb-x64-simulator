@@ -30,7 +30,7 @@ use constants::{
 };
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_void};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -104,12 +104,8 @@ pub extern "C" fn ckb_exec_cell(
 ) -> c_int {
     assert_vm_version();
 
-    let sim_path = utils::get_simulator_path(
-        unsafe { std::slice::from_raw_parts(code_hash, 32) },
-        hash_type,
-        offset,
-        length,
-    );
+    let sim_path =
+        utils::get_simulator_path(utils::to_array(code_hash, 32), hash_type, offset, length);
     let sim_path = sim_path.expect("cannot locate native binary for ckb_exec syscall!");
 
     match SETUP.run_type.as_ref().unwrap_or(&RunningType::Executable) {
@@ -174,7 +170,7 @@ pub extern "C" fn ckb_load_script(ptr: *mut c_void, len: *mut u64, offset: u64) 
 
 #[no_mangle]
 pub extern "C" fn ckb_debug(s: *const c_char) {
-    let message = unsafe { CStr::from_ptr(s) }.to_str().expect("UTF8 error!");
+    let message = utils::to_c_str(s).to_str().expect("UTF8 error!");
     println!("Debug message: {}", message);
 }
 
@@ -387,6 +383,29 @@ extern "C" {
     ) -> c_int;
 }
 
+// TO fix clippy error: clippy::not_unsafe_ptr_arg_deref
+fn rs_simulator_internal_dlopen2(
+    native_library_path: *const u8,
+    code: *const u8,
+    length: u64,
+    aligned_addr: *mut u8,
+    aligned_size: u64,
+    handle: *mut *mut c_void,
+    consumed_size: *mut u64,
+) -> c_int {
+    unsafe {
+        simulator_internal_dlopen2(
+            native_library_path,
+            code,
+            length,
+            aligned_addr,
+            aligned_size,
+            handle,
+            consumed_size,
+        )
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn ckb_dlopen2(
     dep_cell_hash: *const u8,
@@ -396,7 +415,7 @@ pub extern "C" fn ckb_dlopen2(
     handle: *mut *mut c_void,
     consumed_size: *mut u64,
 ) -> c_int {
-    let dep_cell_hash = unsafe { std::slice::from_raw_parts(dep_cell_hash, 32) };
+    let dep_cell_hash = utils::to_array(dep_cell_hash, 32);
     let mut buffer = vec![];
     buffer.extend_from_slice(dep_cell_hash);
     buffer.push(hash_type);
@@ -423,17 +442,15 @@ pub extern "C" fn ckb_dlopen2(
         })
         .expect("cannot locate cell dep");
     let cell_data = cell_dep.data.as_ref();
-    unsafe {
-        simulator_internal_dlopen2(
-            filename.as_str().as_ptr(),
-            cell_data.as_ptr(),
-            cell_data.len() as u64,
-            aligned_addr,
-            aligned_size,
-            handle,
-            consumed_size,
-        )
-    }
+    rs_simulator_internal_dlopen2(
+        filename.as_str().as_ptr(),
+        cell_data.as_ptr(),
+        cell_data.len() as u64,
+        aligned_addr,
+        aligned_size,
+        handle,
+        consumed_size,
+    )
 }
 
 #[no_mangle]

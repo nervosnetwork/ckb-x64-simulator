@@ -26,7 +26,7 @@ pub fn get_simulator_path(
             break;
         }
     }
-    filename.map(|f| f.clone())
+    filename.cloned()
 }
 
 pub struct CkbNativeSimulator {
@@ -107,11 +107,19 @@ impl CkbNativeSimulator {
 pub fn to_vec_args(argc: c_int, argv: *const *const i8) -> Vec<String> {
     let mut args = Vec::with_capacity(argc as usize);
     for i in 0..argc {
-        let c_str = unsafe { std::ffi::CStr::from_ptr(*argv.add(i as usize) as *const i8) };
+        let c_str = unsafe { std::ffi::CStr::from_ptr(*argv.add(i as usize)) };
         let str_slice = c_str
             .to_str()
             .expect("Failed to convert C string to Rust string");
         args.push(str_slice.to_owned());
     }
     args
+}
+
+pub fn to_array(ptr: *const u8, len: usize) -> &'static [u8] {
+    unsafe { std::slice::from_raw_parts(ptr, len) }
+}
+
+pub fn to_c_str(ptr: *const std::ffi::c_char) -> &'static core::ffi::CStr {
+    unsafe { core::ffi::CStr::from_ptr(ptr) }
 }

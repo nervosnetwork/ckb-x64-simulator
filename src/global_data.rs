@@ -17,14 +17,14 @@ impl From<u64> for TxID {
         Self(value)
     }
 }
-impl Into<u64> for TxID {
-    fn into(self) -> u64 {
-        self.0
+impl From<TxID> for u64 {
+    fn from(value: TxID) -> Self {
+        value.0
     }
 }
 impl TxID {
     fn next(&mut self) -> Self {
-        self.0 = self.0 + 1;
+        self.0 += 1;
         self.clone()
     }
 }
@@ -36,15 +36,15 @@ impl From<u64> for ProcID {
         Self(value)
     }
 }
-impl Into<u64> for ProcID {
-    fn into(self) -> u64 {
-        self.0
+impl From<ProcID> for u64 {
+    fn from(value: ProcID) -> Self {
+        value.0
     }
 }
 impl ProcID {
     pub fn next(&mut self) -> Self {
         let id = self.clone();
-        self.0 = self.0 + 1;
+        self.0 += 1;
         id
     }
 }
@@ -68,12 +68,7 @@ impl GlobalData {
         if unsafe { GLOBAL_DATA_PTR.is_null() } {
             &GLOBAL_DATA
         } else {
-            unsafe {
-                let ptr = GLOBAL_DATA_PTR as *mut Mutex<Self>;
-                let ptr2: &mut Mutex<Self> = &mut *ptr;
-
-                ptr2
-            }
+            unsafe { &mut *GLOBAL_DATA_PTR as &mut Mutex<Self> }
         }
     }
     pub fn locked() -> MutexGuard<'static, Self> {
@@ -81,7 +76,7 @@ impl GlobalData {
     }
     pub fn get_ptr() -> *const c_void {
         if unsafe { GLOBAL_DATA_PTR.is_null() } {
-            let infos_ref: &Mutex<Self> = &*GLOBAL_DATA;
+            let infos_ref: &Mutex<Self> = &GLOBAL_DATA;
             infos_ref as *const Mutex<Self> as *const c_void
         } else {
             unsafe { GLOBAL_DATA_PTR as *const c_void }
@@ -100,12 +95,12 @@ impl GlobalData {
     pub fn get_tx(&self, id: &TxID) -> &TxContext {
         self.tx_ctx
             .get(id)
-            .expect(&format!("unknow tx context: {:?}", id))
+            .unwrap_or_else(|| panic!("unknow tx context: {:?}", id))
     }
     pub fn get_tx_mut(&mut self, id: &TxID) -> &mut TxContext {
         self.tx_ctx
-            .get_mut(&id)
-            .expect(&format!("unknow mut tx context: {:?}", id))
+            .get_mut(id)
+            .unwrap_or_else(|| panic!("unknow mut tx context: {:?}", id))
     }
 }
 
@@ -134,7 +129,7 @@ macro_rules! get_proc {
 macro_rules! get_cur_proc {
     () => {
         GlobalData::locked()
-            .get_tx(&crate::process_info::TxContext::ctx_id())
-            .process(&crate::process_info::Process::ctx_id())
+            .get_tx(&TxContext::ctx_id())
+            .process(&Process::ctx_id())
     };
 }

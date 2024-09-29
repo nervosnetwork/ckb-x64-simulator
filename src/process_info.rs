@@ -90,12 +90,10 @@ impl Process {
     pub fn wait_by_pid(&self, id: &ProcID) -> Event {
         if id == &self.id {
             self.event_wait.clone()
+        } else if let Some(c) = self.get_child_by_id(id) {
+            c.event_wait.clone()
         } else {
-            if let Some(c) = self.get_child_by_id(id) {
-                c.event_wait.clone()
-            } else {
-                panic!("notify unknow pid {:?}", id);
-            }
+            panic!("notify unknow pid {:?}", id);
         }
     }
 }
@@ -137,7 +135,7 @@ impl TxContext {
             let p = self
                 .proc_info
                 .get_mut(parent_id.as_ref().unwrap())
-                .expect(&format!("unknow pid: {:?}", parent_id));
+                .unwrap_or_else(|| panic!("unknow pid: {:?}", parent_id));
             let e_wait = Event::default();
             let e_notify = Event::default();
 
@@ -171,7 +169,7 @@ impl TxContext {
     pub fn process(&self, id: &ProcID) -> &Process {
         self.proc_info
             .get(id)
-            .expect(&format!("unknow process id: {:?}", id))
+            .unwrap_or_else(|| panic!("unknow process id: {:?}", id))
     }
 
     pub fn new_pipe(&mut self) -> (Fd, Fd) {
@@ -195,23 +193,26 @@ impl TxContext {
         self.fds.len()
     }
     pub fn move_pipe(&mut self, fd: &Fd, pid: ProcID) {
-        let f = self.fds.get_mut(fd).expect(&format!("unknow fd: {:?}", fd));
+        let f = self
+            .fds
+            .get_mut(fd)
+            .unwrap_or_else(|| panic!("unknow fd: {:?}", fd));
         *f = pid;
     }
 
     pub fn has_fd(&self, fd: &Fd) -> bool {
-        if let Some(pid) = self.fds.get(&fd) {
+        if let Some(pid) = self.fds.get(fd) {
             &Process::ctx_id() == pid
         } else {
             false
         }
     }
     pub fn chech_other_fd(&self, fd: &Fd) -> bool {
-        self.fds.get(&fd.other_fd()).is_some()
+        self.fds.contains_key(&fd.other_fd())
     }
 
     pub fn read_data(&mut self, fd: &Fd, len: usize) -> Vec<u8> {
-        let data = self.bufs.get(&fd);
+        let data = self.bufs.get(fd);
         if data.is_none() {
             return Vec::new();
         }
@@ -233,7 +234,7 @@ impl TxContext {
         }
     }
     pub fn has_data(&self, fd: &Fd) -> bool {
-        return self.bufs.get(fd).is_some() || self.bufs.get(&fd.other_fd()).is_some();
+        self.bufs.contains_key(fd) || self.bufs.contains_key(&fd.other_fd())
     }
 }
 
@@ -277,9 +278,9 @@ impl From<u64> for Fd {
         Self(value)
     }
 }
-impl Into<u64> for Fd {
-    fn into(self) -> u64 {
-        self.0
+impl From<Fd> for u64 {
+    fn from(value: Fd) -> Self {
+        value.0
     }
 }
 impl Fd {

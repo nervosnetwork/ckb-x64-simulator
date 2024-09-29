@@ -30,17 +30,10 @@ pub extern "C" fn ckb_spawn_cell(
     inherited_fds: *const u64,
     pid: *mut u64,
 ) -> c_int {
-    let (rc, id) = Spawn::default().spawn_cell(
-        code_hash,
-        hash_type,
-        offset,
-        length,
-        argc,
-        argv,
-        inherited_fds,
-    );
+    let ckb_sim = utils::CkbNativeSimulator::new_by_hash(code_hash, hash_type, offset, length);
+    let (rc, id) = Spawn::default().spawn_cell(ckb_sim, argc, argv, inherited_fds);
     if let Some(id) = id {
-        unsafe { *pid = id.into() }
+        unsafe { *({ pid }) = id.into() };
     }
 
     rc
@@ -133,23 +126,18 @@ impl Spawn {
 
     fn spawn_cell(
         &self,
-        code_hash: *const u8,
-        hash_type: u8,
-        offset: u32,
-        length: u32,
+        ckb_sim: utils::CkbNativeSimulator,
         argc: i32,
         argv: *const *const u8,
         inherited_fds: *const u64,
     ) -> (i32, Option<ProcID>) {
         let new_id = self.new_process_id(inherited_fds);
-
-        utils::CkbNativeSimulator::new_by_hash(code_hash, hash_type, offset, length)
-            .ckb_std_main_async(argc, argv, &new_id);
+        ckb_sim.ckb_std_main_async(argc, argv, &new_id);
 
         let event = crate::get_cur_proc!().wait_by_pid(&new_id);
         event.wait();
 
-        (0, Some(new_id.into()))
+        (0, Some(new_id))
     }
     fn inherited_fds(&self, fds: *mut u64, length: *mut usize) -> i32 {
         let out_fds = get_tx!(&TxContext::ctx_id())
@@ -249,10 +237,10 @@ impl Spawn {
         }
         let g = GlobalData::locked();
         let tx_ctx = g.get_tx(&TxContext::ctx_id());
-        if !tx_ctx.has_fd(&fd) {
+        if !tx_ctx.has_fd(fd) {
             return Err(6); // CKB_INVALID_FD
         }
-        if !tx_ctx.chech_other_fd(&fd) {
+        if !tx_ctx.chech_other_fd(fd) {
             return Err(7); // OTHER_END_CLOSED
         }
         Ok(())
