@@ -2,11 +2,12 @@ use crate::process_info::TxContext;
 use std::{
     collections::HashMap,
     ffi::c_void,
+    pin::Pin,
     sync::{Mutex, MutexGuard},
 };
 
 lazy_static! {
-    static ref GLOBAL_DATA: Mutex<GlobalData> = Default::default();
+    static ref GLOBAL_DATA: Pin<Box<Mutex<GlobalData>>> = Pin::new(Box::default());
 }
 static mut GLOBAL_DATA_PTR: *mut Mutex<GlobalData> = std::ptr::null_mut();
 
