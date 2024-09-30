@@ -14,7 +14,13 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+    - name: Install llvm 16
+      run: wget https://apt.llvm.org/llvm.sh && chmod +x llvm.sh && sudo ./llvm.sh 16 && rm llvm.sh
+    - name: Install riscv64 target
+      run: rustup target add riscv64imac-unknown-none-elf
     - name: Run Cargo Test
       run: cargo test
     - name: Run Cargo clippy
       run: cargo clippy --all
+    - name: Run Test
+      run: cd tests && make test

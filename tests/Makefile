@@ -60,7 +60,7 @@ run:
 
 # test, check, clippy and fmt here are provided for completeness,
 # there is nothing wrong invoking cargo directly instead of make.
-test:
+test: build
 	cargo test --package tests --lib -- tests::test_spawn_base --exact
 	cargo test --package tests --lib -- tests::test_spawn_empty_pipe --exact
 	cargo test --package tests --lib -- tests::test_spawn_io1 --exact
