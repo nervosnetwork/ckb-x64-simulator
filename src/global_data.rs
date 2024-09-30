@@ -1,4 +1,4 @@
-use crate::process_info::TxContext;
+use crate::vm_info::TxContext;
 use std::{
     collections::HashMap,
     ffi::c_void,
@@ -31,18 +31,18 @@ impl TxID {
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Hash, Debug)]
-pub struct ProcID(u64);
-impl From<u64> for ProcID {
+pub struct VmID(u64);
+impl From<u64> for VmID {
     fn from(value: u64) -> Self {
         Self(value)
     }
 }
-impl From<ProcID> for u64 {
-    fn from(value: ProcID) -> Self {
+impl From<VmID> for u64 {
+    fn from(value: VmID) -> Self {
         value.0
     }
 }
-impl ProcID {
+impl VmID {
     pub fn next(&mut self) -> Self {
         let id = self.clone();
         self.0 += 1;
@@ -120,17 +120,17 @@ macro_rules! get_tx_mut {
 }
 
 #[macro_export]
-macro_rules! get_proc {
-    ($txid: expr, $procid: expr) => {
-        GlobalData::locked().get_tx(&$txid).process(&$procid)
+macro_rules! get_vm {
+    ($txid: expr, $vm_id: expr) => {
+        GlobalData::locked().get_tx(&$txid).vm_info(&$vm_id)
     };
 }
 
 #[macro_export]
-macro_rules! get_cur_proc {
+macro_rules! get_cur_vm {
     () => {
         GlobalData::locked()
             .get_tx(&TxContext::ctx_id())
-            .process(&Process::ctx_id())
+            .vm_info(&VMInfo::ctx_id())
     };
 }

@@ -1,8 +1,8 @@
 use crate::{
     get_tx, get_tx_mut,
-    global_data::{GlobalData, ProcID, TxID},
-    process_info::{Fd, Process, TxContext},
+    global_data::{GlobalData, TxID, VmID},
     utils,
+    vm_info::{Fd, TxContext, VMInfo},
 };
 use std::os::raw::{c_int, c_void};
 
@@ -87,7 +87,7 @@ pub extern "C" fn ckb_load_block_extension(
 
 struct Spawn {
     tx_id: TxID,
-    proc_id: ProcID,
+    vm_id: VmID,
 }
 
 const MAX_FDS: usize = 64;
@@ -96,13 +96,13 @@ impl Default for Spawn {
     fn default() -> Self {
         Self {
             tx_id: TxContext::ctx_id(),
-            proc_id: Process::ctx_id(),
+            vm_id: VMInfo::ctx_id(),
         }
     }
 }
 impl Spawn {
     fn pid(&self) -> u64 {
-        self.proc_id.clone().into()
+        self.vm_id.clone().into()
     }
     fn pipe(&self, fds: *mut u64) -> i32 {
         if get_tx!(&self.tx_id).len_pipe() >= MAX_FDS {
@@ -130,18 +130,18 @@ impl Spawn {
         argc: i32,
         argv: *const *const u8,
         inherited_fds: *const u64,
-    ) -> (i32, Option<ProcID>) {
-        let new_id = self.new_process_id(inherited_fds);
+    ) -> (i32, Option<VmID>) {
+        let new_id = self.new_vm_id(inherited_fds);
         ckb_sim.ckb_std_main_async(argc, argv, &new_id);
 
-        let event = crate::get_cur_proc!().wait_by_pid(&new_id);
+        let event = crate::get_cur_vm!().wait_by_pid(&new_id);
         event.wait();
 
         (0, Some(new_id))
     }
     fn inherited_fds(&self, fds: *mut u64, length: *mut usize) -> i32 {
         let out_fds = get_tx!(&TxContext::ctx_id())
-            .process(&Process::ctx_id())
+            .vm_info(&VMInfo::ctx_id())
             .inherited_fds();
         let len = out_fds.len().min(unsafe { *length });
 
@@ -154,8 +154,8 @@ impl Spawn {
         if let Err(e) = Self::check_fd(true, &fd) {
             return e;
         }
-        crate::get_cur_proc!().notify(Some(&fd));
-        let event = crate::get_cur_proc!().wait(Some(&fd));
+        crate::get_cur_vm!().notify(Some(&fd));
+        let event = crate::get_cur_vm!().wait(Some(&fd));
         event.wait();
 
         let buf_len = unsafe { *length };
@@ -175,8 +175,8 @@ impl Spawn {
         let has_data = get_tx_mut!(&TxContext::ctx_id()).has_data(&fd);
 
         if has_data {
-            crate::get_cur_proc!().notify(Some(&fd));
-            let event = crate::get_cur_proc!().wait(Some(&fd));
+            crate::get_cur_vm!().notify(Some(&fd));
+            let event = crate::get_cur_vm!().wait(Some(&fd));
             event.wait();
         }
 
@@ -195,8 +195,8 @@ impl Spawn {
         get_tx_mut!(&TxContext::ctx_id()).write_data(&fd, &buf);
 
         if !has_data {
-            crate::get_cur_proc!().notify(Some(&fd));
-            let event = crate::get_cur_proc!().wait(Some(&fd));
+            crate::get_cur_vm!().notify(Some(&fd));
+            let event = crate::get_cur_vm!().wait(Some(&fd));
             event.wait();
         }
 
@@ -212,7 +212,7 @@ impl Spawn {
             }
         }
     }
-    fn new_process_id(&self, inherited_fds: *const u64) -> ProcID {
+    fn new_vm_id(&self, inherited_fds: *const u64) -> VmID {
         let inherited_fds: Vec<Fd> = unsafe {
             let mut fds = Vec::new();
             let mut fds_ptr = inherited_fds;
@@ -222,14 +222,13 @@ impl Spawn {
             }
             fds
         };
-        let proc_id =
-            get_tx_mut!(self.tx_id).new_process(Some(self.proc_id.clone()), &inherited_fds);
+        let vm_id = get_tx_mut!(self.tx_id).new_vm(Some(self.vm_id.clone()), &inherited_fds);
         inherited_fds.iter().all(|fd| {
-            get_tx_mut!(self.tx_id).move_pipe(fd, proc_id.clone());
+            get_tx_mut!(self.tx_id).move_pipe(fd, vm_id.clone());
             true
         });
 
-        proc_id
+        vm_id
     }
     fn check_fd(is_read: bool, fd: &Fd) -> Result<(), c_int> {
         if fd.is_read() != is_read {

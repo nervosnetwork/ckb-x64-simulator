@@ -1,6 +1,6 @@
 use crate::{
-    global_data::{GlobalData, ProcID, TxID},
-    process_info::{Process, TxContext},
+    global_data::{GlobalData, TxID, VmID},
+    vm_info::{TxContext, VMInfo},
 };
 use std::{
     ffi::{c_int, c_void},
@@ -71,27 +71,27 @@ impl CkbNativeSimulator {
         }
     }
 
-    pub fn ckb_std_main_async(self, argc: i32, argv: *const *const u8, pid: &ProcID) {
+    pub fn ckb_std_main_async(self, argc: i32, argv: *const *const u8, pid: &VmID) {
         let args = to_vec_args(argc, argv as *const *const i8);
         let tx_ctx_id = TxContext::ctx_id();
 
         let pid2 = pid.clone();
         std::thread::spawn(move || {
-            Process::set_ctx_id(pid2.clone());
+            VMInfo::set_ctx_id(pid2.clone());
             TxContext::set_ctx_id(tx_ctx_id.clone());
 
             self.update_script_info(tx_ctx_id.clone(), pid2.clone());
 
             let rc = self.ckb_std_main(args);
-            crate::get_proc!(&tx_ctx_id, &pid2).notify(None);
+            crate::get_vm!(&tx_ctx_id, &pid2).notify(None);
             rc
         });
     }
 
-    pub fn update_script_info(&self, tx_ctx_id: TxID, proc_ctx_id: ProcID) {
+    pub fn update_script_info(&self, tx_ctx_id: TxID, vm_ctx_id: VmID) {
         type SetScriptInfo<'a> = libloading::Symbol<
             'a,
-            unsafe extern "C" fn(ptr: *const c_void, tx_ctx_id: u64, proc_ctx_id: u64),
+            unsafe extern "C" fn(ptr: *const c_void, tx_ctx_id: u64, vm_ctx_id: u64),
         >;
 
         unsafe {
@@ -99,7 +99,7 @@ impl CkbNativeSimulator {
                 .lib
                 .get(b"__set_script_info")
                 .expect("load function : __update_spawn_info");
-            func(GlobalData::get_ptr(), tx_ctx_id.into(), proc_ctx_id.into())
+            func(GlobalData::get_ptr(), tx_ctx_id.into(), vm_ctx_id.into())
         }
     }
 }

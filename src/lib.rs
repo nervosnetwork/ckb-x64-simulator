@@ -4,11 +4,11 @@ pub mod spawn;
 pub use spawn::*;
 
 mod global_data;
-mod process_info;
+mod vm_info;
 mod utils;
 
 use global_data::GlobalData;
-use process_info::{Process, TxContext};
+use vm_info::{VMInfo, TxContext};
 
 #[macro_use]
 extern crate lazy_static;
@@ -119,22 +119,22 @@ pub extern "C" fn ckb_exec_cell(
         RunningType::DynamicLib => {
             use utils::CkbNativeSimulator;
 
-            let tx_ctx_id = GlobalData::locked().set_tx(process_info::TxContext::default());
+            let tx_ctx_id = GlobalData::locked().set_tx(vm_info::TxContext::default());
             TxContext::set_ctx_id(tx_ctx_id.clone());
 
             let sim = CkbNativeSimulator::new_by_hash(code_hash, hash_type, offset, length);
             let args = utils::to_vec_args(argc, argv as *const *const i8);
 
             let t = std::thread::spawn(move || {
-                let proc_id = get_tx_mut!(&tx_ctx_id).new_process(None, &[]);
+                let vm_id = get_tx_mut!(&tx_ctx_id).new_vm(None, &[]);
 
-                Process::set_ctx_id(proc_id.clone());
+                VMInfo::set_ctx_id(vm_id.clone());
                 TxContext::set_ctx_id(tx_ctx_id.clone());
 
-                sim.update_script_info(tx_ctx_id.clone(), proc_id.clone());
+                sim.update_script_info(tx_ctx_id.clone(), vm_id.clone());
 
                 sim.ckb_std_main(args)
-                // get_cur_proc!().notify();
+                // get_cur_vm!().notify();
             });
 
             t.join().expect("exec dylib") as c_int
@@ -454,10 +454,10 @@ pub extern "C" fn ckb_dlopen2(
 }
 
 #[no_mangle]
-pub extern "C" fn set_script_info(ptr: *const std::ffi::c_void, tx_ctx_id: u64, proc_ctx_id: u64) {
+pub extern "C" fn set_script_info(ptr: *const std::ffi::c_void, tx_ctx_id: u64, vm_ctx_id: u64) {
     GlobalData::set_ptr(ptr);
     TxContext::set_ctx_id(tx_ctx_id.into());
-    Process::set_ctx_id(proc_ctx_id.into());
+    VMInfo::set_ctx_id(vm_ctx_id.into());
 }
 
 fn fetch_cell(index: u64, source: u64) -> Result<(CellOutput, Bytes), c_int> {

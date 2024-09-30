@@ -1,4 +1,4 @@
-use crate::global_data::{ProcID, TxID};
+use crate::global_data::{TxID, VmID};
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -7,11 +7,11 @@ use std::{
 
 thread_local! {
     static TX_CONTEXT_ID: RefCell<TxID> = RefCell::new(TxID::default());
-    static PROCESS_CONTEXT_ID: RefCell<ProcID> = RefCell::new(ProcID::default());
+    static VM_CONTEXT_ID: RefCell<VmID> = RefCell::new(VmID::default());
 }
 
 pub struct Child {
-    id: ProcID,
+    id: VmID,
     inherited_fds: Vec<Fd>,
 
     event_wait: Event,
@@ -19,21 +19,21 @@ pub struct Child {
 }
 
 #[derive(Default)]
-pub struct Process {
-    id: ProcID,
+pub struct VMInfo {
+    id: VmID,
 
     inherited_fds: Vec<Fd>,
     event_wait: Event,
     event_notify: Event,
 
-    children: HashMap<ProcID, Child>, // wait, notify
+    children: HashMap<VmID, Child>, // wait, notify
 }
-impl Process {
-    pub fn set_ctx_id(id: ProcID) {
-        PROCESS_CONTEXT_ID.with(|f| *f.borrow_mut() = id);
+impl VMInfo {
+    pub fn set_ctx_id(id: VmID) {
+        VM_CONTEXT_ID.with(|f| *f.borrow_mut() = id);
     }
-    pub fn ctx_id() -> ProcID {
-        PROCESS_CONTEXT_ID.with(|f| f.borrow().clone())
+    pub fn ctx_id() -> VmID {
+        VM_CONTEXT_ID.with(|f| f.borrow().clone())
     }
 
     pub fn inherited_fds(&self) -> Vec<Fd> {
@@ -52,7 +52,7 @@ impl Process {
         }
     }
 
-    fn get_child_by_id(&self, id: &ProcID) -> Option<&Child> {
+    fn get_child_by_id(&self, id: &VmID) -> Option<&Child> {
         if let Some((_, c)) = self.children.iter().find(|(_, child)| &child.id == id) {
             Some(c)
         } else {
@@ -87,7 +87,7 @@ impl Process {
         }
     }
 
-    pub fn wait_by_pid(&self, id: &ProcID) -> Event {
+    pub fn wait_by_pid(&self, id: &VmID) -> Event {
         if id == &self.id {
             self.event_wait.clone()
         } else if let Some(c) = self.get_child_by_id(id) {
@@ -100,20 +100,20 @@ impl Process {
 
 pub struct TxContext {
     fds_count: u64,
-    proc_id_count: ProcID,
+    vm_id_count: VmID,
 
-    proc_info: HashMap<ProcID, Process>,
+    vm_info: HashMap<VmID, VMInfo>,
 
-    fds: HashMap<Fd, ProcID>,
+    fds: HashMap<Fd, VmID>,
     bufs: HashMap<Fd, Vec<u8>>,
 }
 impl Default for TxContext {
     fn default() -> Self {
-        Process::set_ctx_id(0.into());
+        VMInfo::set_ctx_id(0.into());
         Self {
             fds_count: 2,
-            proc_id_count: 1.into(),
-            proc_info: [(0.into(), Process::default())].into(),
+            vm_id_count: 1.into(),
+            vm_info: [(0.into(), VMInfo::default())].into(),
             fds: Default::default(),
             bufs: Default::default(),
         }
@@ -127,13 +127,13 @@ impl TxContext {
         TX_CONTEXT_ID.with(|f| f.borrow().clone())
     }
 
-    pub fn new_process(&mut self, parent_id: Option<ProcID>, fds: &[Fd]) -> ProcID {
+    pub fn new_vm(&mut self, parent_id: Option<VmID>, fds: &[Fd]) -> VmID {
         assert!(parent_id.is_none() == fds.is_empty());
 
-        let id = self.proc_id_count.next();
+        let id = self.vm_id_count.next();
         let (e_wait, e_notify) = if parent_id.is_some() {
             let p = self
-                .proc_info
+                .vm_info
                 .get_mut(parent_id.as_ref().unwrap())
                 .unwrap_or_else(|| panic!("unknow pid: {:?}", parent_id));
             let e_wait = Event::default();
@@ -154,7 +154,7 @@ impl TxContext {
             (Event::default(), Event::default())
         };
 
-        let p = Process {
+        let p = VMInfo {
             id: id.clone(),
             inherited_fds: fds.to_vec(),
             event_notify: e_wait,
@@ -162,18 +162,18 @@ impl TxContext {
             children: Default::default(),
         };
 
-        self.proc_info.insert(id.clone(), p);
+        self.vm_info.insert(id.clone(), p);
 
         id
     }
-    pub fn process(&self, id: &ProcID) -> &Process {
-        self.proc_info
+    pub fn vm_info(&self, id: &VmID) -> &VMInfo {
+        self.vm_info
             .get(id)
-            .unwrap_or_else(|| panic!("unknow process id: {:?}", id))
+            .unwrap_or_else(|| panic!("unknow vm id: {:?}", id))
     }
 
     pub fn new_pipe(&mut self) -> (Fd, Fd) {
-        let pid = Process::ctx_id();
+        let pid = VMInfo::ctx_id();
         let fds = Fd::create(self.fds_count);
 
         self.fds.insert(fds.0.clone(), pid.clone());
@@ -192,7 +192,7 @@ impl TxContext {
     pub fn len_pipe(&self) -> usize {
         self.fds.len()
     }
-    pub fn move_pipe(&mut self, fd: &Fd, pid: ProcID) {
+    pub fn move_pipe(&mut self, fd: &Fd, pid: VmID) {
         let f = self
             .fds
             .get_mut(fd)
@@ -202,7 +202,7 @@ impl TxContext {
 
     pub fn has_fd(&self, fd: &Fd) -> bool {
         if let Some(pid) = self.fds.get(fd) {
-            &Process::ctx_id() == pid
+            &VMInfo::ctx_id() == pid
         } else {
             false
         }
