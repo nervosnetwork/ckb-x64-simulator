@@ -259,14 +259,14 @@ impl Event {
 
     pub fn wait(&self) {
         let (lock, cvar) = &*self.data;
-        let mut event = lock.lock().unwrap();
+        let mut started = lock.lock().unwrap();
 
         loop {
-            if *event {
-                *event = false;
+            if *started {
+                *started = false;
                 break;
             }
-            event = cvar.wait(event).unwrap();
+            started = cvar.wait(started).unwrap();
         }
     }
 }
