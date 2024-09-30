@@ -1,4 +1,5 @@
 use crate::{
+    get_vm,
     global_data::{GlobalData, TxID, VmID},
     vm_info::{TxContext, VMInfo},
 };
@@ -83,7 +84,7 @@ impl CkbNativeSimulator {
             self.update_script_info(tx_ctx_id.clone(), pid2.clone());
 
             let rc = self.ckb_std_main(args);
-            crate::get_vm!(&tx_ctx_id, &pid2).notify(None);
+            get_vm!(&tx_ctx_id, &pid2).notify(None);
             rc
         });
     }
@@ -122,4 +123,12 @@ pub fn to_array(ptr: *const u8, len: usize) -> &'static [u8] {
 
 pub fn to_c_str(ptr: *const std::ffi::c_char) -> &'static core::ffi::CStr {
     unsafe { core::ffi::CStr::from_ptr(ptr) }
+}
+
+pub fn to_usize(ptr: *mut usize) -> usize {
+    unsafe { *ptr }
+}
+
+pub fn set_usize(ptr: *mut usize, v: usize) {
+    unsafe { *ptr = v }
 }

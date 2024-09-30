@@ -4,11 +4,11 @@ pub mod spawn;
 pub use spawn::*;
 
 mod global_data;
-mod vm_info;
 mod utils;
+mod vm_info;
 
 use global_data::GlobalData;
-use vm_info::{VMInfo, TxContext};
+use vm_info::{TxContext, VMInfo};
 
 #[macro_use]
 extern crate lazy_static;

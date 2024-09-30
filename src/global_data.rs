@@ -113,9 +113,23 @@ macro_rules! get_tx {
 }
 
 #[macro_export]
+macro_rules! get_cur_tx {
+    () => {
+        GlobalData::locked().get_tx(&TxContext::ctx_id())
+    };
+}
+
+#[macro_export]
 macro_rules! get_tx_mut {
     ($txid:expr) => {
         GlobalData::locked().get_tx_mut(&$txid)
+    };
+}
+
+#[macro_export]
+macro_rules! get_cur_tx_mut {
+    () => {
+        GlobalData::locked().get_tx_mut(&TxContext::ctx_id())
     };
 }
 
