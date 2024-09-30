@@ -1,0 +1,11 @@
+[package]
+name = "exec-parent"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ckb-std = { git = "https://github.com/joii2020/ckb-std.git", rev = "5bd8c01" }
+
+[features]
+native-simulator = ["ckb-std/native-simulator"]
+

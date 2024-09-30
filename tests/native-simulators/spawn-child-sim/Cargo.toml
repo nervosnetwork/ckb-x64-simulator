@@ -1,0 +1,12 @@
+[package]
+name = "spawn-child-sim"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+spawn-child = { path = "../../contracts/spawn-child", features = ["native-simulator"] }
+ckb-std = { git = "https://github.com/joii2020/ckb-std.git", rev = "5bd8c01", features = ["native-simulator"] }
+
+[lib]
+crate-type = ["cdylib"]
