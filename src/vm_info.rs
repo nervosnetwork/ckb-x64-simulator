@@ -10,6 +10,8 @@ thread_local! {
     static VM_CONTEXT_ID: RefCell<VmID> = RefCell::new(VmID::default());
 }
 
+const MAX_VMS_COUNT: u64 = 16;
+
 pub struct Child {
     id: VmID,
     inherited_fds: Vec<Fd>,
@@ -170,6 +172,9 @@ impl TxContext {
         self.vm_info
             .get(id)
             .unwrap_or_else(|| panic!("unknow vm id: {:?}", id))
+    }
+    pub fn max_vms_spawned(&self) -> bool {
+        u64::from(self.vm_id_count.clone()) >= MAX_VMS_COUNT
     }
 
     pub fn new_pipe(&mut self) -> (Fd, Fd) {

@@ -32,8 +32,17 @@ pub extern "C" fn ckb_spawn_cell(
     inherited_fds: *const u64,
     pid: *mut u64,
 ) -> c_int {
+    // check fd:
+    let inherited_fds = get_fds(inherited_fds);
+    if !inherited_fds.iter().any(|f| get_cur_tx!().has_fd(&f)) {
+        return 6; // INVALID_FD
+    }
+    if get_cur_tx!().max_vms_spawned() {
+        return 8; //MAX_VMS_SPAWNED
+    }
+
     let ckb_sim = utils::CkbNativeSimulator::new_by_hash(code_hash, hash_type, offset, length);
-    let new_id = new_vm_id(inherited_fds);
+    let new_id = new_vm_id(&inherited_fds);
     ckb_sim.ckb_std_main_async(argc, argv, &new_id);
 
     let event = get_cur_vm!().wait_by_pid(&new_id);
@@ -60,7 +69,7 @@ pub extern "C" fn ckb_pipe(fds: *mut u64) -> c_int {
     }
 
     let out = get_tx_mut!(&TxContext::ctx_id()).new_pipe();
-    copy_fd(&[out.0, out.1], fds);
+    copy_fds(&[out.0, out.1], fds);
     0
 }
 
@@ -131,7 +140,7 @@ pub extern "C" fn ckb_inherited_fds(fds: *mut u64, length: *mut usize) -> c_int 
         .inherited_fds();
     let len = out_fds.len().min(utils::to_usize(length));
 
-    copy_fd(&out_fds[0..len], fds);
+    copy_fds(&out_fds[0..len], fds);
     0
 }
 
@@ -158,17 +167,7 @@ pub extern "C" fn ckb_load_block_extension(
     panic!("unsupport");
 }
 
-fn new_vm_id(inherited_fds: *const u64) -> VmID {
-    let inherited_fds: Vec<Fd> = unsafe {
-        let mut fds = Vec::new();
-        let mut fds_ptr = inherited_fds;
-        while *fds_ptr != 0 {
-            fds.push((*fds_ptr).into());
-            fds_ptr = fds_ptr.add(1);
-        }
-        fds
-    };
-
+fn new_vm_id(inherited_fds: &[Fd]) -> VmID {
     let cur_id = VMInfo::ctx_id();
     let new_id = get_cur_tx_mut!().new_vm(Some(cur_id.clone()), &inherited_fds);
 
@@ -180,13 +179,25 @@ fn new_vm_id(inherited_fds: *const u64) -> VmID {
     new_id
 }
 
-fn copy_fd(in_fd: &[Fd], out_fd: *mut u64) {
+fn copy_fds(in_fd: &[Fd], out_fd: *mut u64) {
     let mut out_fd = out_fd;
     for fd in in_fd {
         unsafe {
             *out_fd = fd.clone().into();
             out_fd = out_fd.add(1);
         }
+    }
+}
+
+fn get_fds(fds: *const u64) -> Vec<Fd> {
+    unsafe {
+        let mut buf = Vec::new();
+        let mut fds_ptr = fds;
+        while *fds_ptr != 0 {
+            buf.push((*fds_ptr).into());
+            fds_ptr = fds_ptr.add(1);
+        }
+        buf
     }
 }
 
