@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ckb-std = { git = "https://github.com/joii2020/ckb-std.git", rev = "5bd8c01" }
+ckb-std-wrapper = { path = "../../libs/ckb-std-wrapper" }
 spawn_cmd = { path = "../../libs/spawn_cmd" }
 
 [features]
-native-simulator = ["ckb-std/native-simulator"]
+native-simulator = ["ckb-std-wrapper/native-simulator"]
 

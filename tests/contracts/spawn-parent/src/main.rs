@@ -8,6 +8,7 @@ ckb_std::default_alloc!();
 
 #[cfg(any(feature = "native-simulator", test))]
 extern crate alloc;
+use ckb_std_wrapper::ckb_std;
 
 use alloc::{
     string::{String, ToString},

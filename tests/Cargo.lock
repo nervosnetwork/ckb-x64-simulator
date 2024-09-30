@@ -464,6 +464,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ckb-std-wrapper"
+version = "0.1.0"
+dependencies = [
+ "ckb-std",
+]
+
+[[package]]
 name = "ckb-system-scripts"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -763,14 +770,14 @@ dependencies = [
 name = "exec-child"
 version = "0.1.0"
 dependencies = [
- "ckb-std",
+ "ckb-std-wrapper",
 ]
 
 [[package]]
 name = "exec-child-sim"
 version = "0.1.0"
 dependencies = [
- "ckb-std",
+ "ckb-std-wrapper",
  "exec-child",
 ]
 
@@ -778,14 +785,14 @@ dependencies = [
 name = "exec-parent"
 version = "0.1.0"
 dependencies = [
- "ckb-std",
+ "ckb-std-wrapper",
 ]
 
 [[package]]
 name = "exec-parent-sim"
 version = "0.1.0"
 dependencies = [
- "ckb-std",
+ "ckb-std-wrapper",
  "exec-parent",
 ]
 
@@ -1593,7 +1600,7 @@ dependencies = [
 name = "spawn-child"
 version = "0.1.0"
 dependencies = [
- "ckb-std",
+ "ckb-std-wrapper",
  "spawn_cmd",
 ]
 
@@ -1601,7 +1608,7 @@ dependencies = [
 name = "spawn-child-sim"
 version = "0.1.0"
 dependencies = [
- "ckb-std",
+ "ckb-std-wrapper",
  "spawn-child",
 ]
 
@@ -1609,7 +1616,7 @@ dependencies = [
 name = "spawn-parent"
 version = "0.1.0"
 dependencies = [
- "ckb-std",
+ "ckb-std-wrapper",
  "spawn_cmd",
 ]
 
@@ -1617,7 +1624,7 @@ dependencies = [
 name = "spawn-parent-sim"
 version = "0.1.0"
 dependencies = [
- "ckb-std",
+ "ckb-std-wrapper",
  "spawn-parent",
 ]
 

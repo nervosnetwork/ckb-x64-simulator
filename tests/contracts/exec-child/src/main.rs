@@ -10,6 +10,7 @@ use ckb_std::default_alloc;
 ckb_std::entry!(program_entry);
 #[cfg(not(any(feature = "native-simulator", test)))]
 default_alloc!();
+use ckb_std_wrapper::ckb_std;
 
 pub fn program_entry() -> i8 {
     ckb_std::debug!("This is a sample contract exec-child!");

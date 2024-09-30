@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
 exec-parent = { path = "../../contracts/exec-parent", features = ["native-simulator"] }
-ckb-std = { git = "https://github.com/joii2020/ckb-std.git", rev = "5bd8c01", features = ["native-simulator"] }
+ckb-std-wrapper = { path = "../../libs/ckb-std-wrapper" }
 
 [lib]
 crate-type = ["cdylib"]

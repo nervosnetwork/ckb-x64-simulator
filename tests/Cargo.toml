@@ -14,6 +14,7 @@ members = [
   "contracts/exec-child",
   "contracts/exec-parent",
   "libs/spawn_cmd",
+  "libs/ckb-std-wrapper",
   "tests",
 ]
 
