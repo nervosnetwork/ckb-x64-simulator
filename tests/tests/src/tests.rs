@@ -194,6 +194,11 @@ fn test_spawn_io3() {
     run_spawn(SpawnCmd::BaseIO3, &[]);
 }
 
+#[test]
+fn test_spawn_io4() {
+    run_spawn(SpawnCmd::BaseIO4, &[]);
+}
+
 // #[test]
 // fn test_multi_spawn() {
 //     run_spawn(SpawnCmd::EmptyPipe, &[]);

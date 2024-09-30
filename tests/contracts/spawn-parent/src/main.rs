@@ -11,6 +11,7 @@ extern crate alloc;
 
 use alloc::{
     string::{String, ToString},
+    vec,
     vec::Vec,
 };
 use ckb_std::{
@@ -43,6 +44,7 @@ pub fn program_entry() -> i8 {
         SpawnCmd::BaseIO1 => spawn_base_io1(&code_hash, &args),
         SpawnCmd::BaseIO2 => spawn_base_io2(&code_hash, &args),
         SpawnCmd::BaseIO3 => spawn_base_io3(&code_hash, &args),
+        SpawnCmd::BaseIO4 => spawn_base_io4(&code_hash, &args),
     };
 
     debug!("-A- Spawn-Parent(pid:{}) End --", syscalls::process_id());
@@ -170,6 +172,37 @@ fn spawn_base_io3(code_hash: &Byte32, _args: &[u8]) -> i8 {
     let write_buf = alloc::vec![argv[0].as_bytes(), argv[1].as_bytes()].concat();
     let len = syscalls::write(std_fds[1], &write_buf).expect("write");
     assert_eq!(len, write_buf.len());
+
+    0
+}
+
+fn spawn_base_io4(code_hash: &Byte32, _argv: &[u8]) -> i8 {
+    let (std_fds, son_fds) = new_pipe();
+
+    let argv = ["hello".to_string(), "world".to_string()];
+    let _pid = run_sapwn(code_hash, SpawnCmd::BaseIO4, &argv, &son_fds).expect("run spawn base io");
+
+    let mut buf1 = [0u8; 5];
+    syscalls::read(std_fds[0], &mut buf1).unwrap();
+    debug!("-A- buf1: {:02x?}", buf1);
+    assert_eq!(
+        CStr::from_bytes_until_nul(&[buf1.to_vec(), vec![0]].concat())
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        "hello"
+    );
+
+    let mut buf2 = [0u8; 5];
+    syscalls::read(std_fds[0], &mut buf2).unwrap();
+    debug!("-A- buf2: {:02x?}", buf2);
+    assert_eq!(
+        CStr::from_bytes_until_nul(&[buf2.to_vec(), vec![0]].concat())
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        "world"
+    );
 
     0
 }

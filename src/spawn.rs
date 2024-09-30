@@ -1,5 +1,5 @@
 use crate::{
-    get_cur_tx, get_cur_tx_mut, get_cur_vm, get_tx, get_tx_mut,
+    get_cur_tx, get_cur_tx_mut, get_cur_vm,
     global_data::{GlobalData, VmID},
     utils,
     vm_info::{Fd, TxContext, VMInfo},
@@ -34,7 +34,7 @@ pub extern "C" fn ckb_spawn_cell(
 ) -> c_int {
     // check fd:
     let inherited_fds = get_fds(inherited_fds);
-    if !inherited_fds.iter().any(|f| get_cur_tx!().has_fd(&f)) {
+    if !inherited_fds.iter().any(|f| get_cur_tx!().has_fd(f)) {
         return 6; // INVALID_FD
     }
     if get_cur_tx!().max_vms_spawned() {
@@ -68,7 +68,7 @@ pub extern "C" fn ckb_pipe(fds: *mut u64) -> c_int {
         return 9; // MAX_FDS_CREATED
     }
 
-    let out = get_tx_mut!(&TxContext::ctx_id()).new_pipe();
+    let out = get_cur_tx_mut!().new_pipe();
     copy_fds(&[out.0, out.1], fds);
     0
 }
@@ -81,14 +81,14 @@ pub extern "C" fn ckb_read(fd: u64, buf: *mut c_void, length: *mut usize) -> c_i
     if let Err(e) = check_fd(true, &fd) {
         return e;
     }
-    get_cur_vm!().notify(Some(&fd));
-    let event = get_cur_vm!().wait(Some(&fd));
-    event.wait();
 
-    #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    let buf_len = utils::to_usize(length);
+    if !get_cur_tx!().has_data(&fd) {
+        get_cur_vm!().notify(Some(&fd));
+        let event = get_cur_vm!().wait(Some(&fd));
+        event.wait();
+    }
 
-    let data = get_tx_mut!(&TxContext::ctx_id()).read_data(&fd, buf_len);
+    let (data, _cache_size) = get_cur_tx_mut!().read_data(&fd, utils::to_usize(length));
     if !data.is_empty() {
         unsafe { std::ptr::copy_nonoverlapping(data.as_ptr(), buf as *mut u8, data.len()) };
     }
@@ -104,7 +104,7 @@ pub extern "C" fn ckb_write(fd: u64, buf: *const c_void, length: *mut usize) -> 
     if let Err(e) = check_fd(false, &fd) {
         return e;
     }
-    let has_data = get_tx_mut!(&TxContext::ctx_id()).has_data(&fd);
+    let has_data = get_cur_tx_mut!().has_data(&fd);
 
     if has_data {
         get_cur_vm!().notify(Some(&fd));
@@ -122,7 +122,7 @@ pub extern "C" fn ckb_write(fd: u64, buf: *const c_void, length: *mut usize) -> 
         std::slice::from_raw_parts(buf as *const u8, length)
     }
     .to_vec();
-    get_tx_mut!(&TxContext::ctx_id()).write_data(&fd, &buf);
+    get_cur_tx_mut!().write_data(&fd, &buf);
 
     if !has_data {
         get_cur_vm!().notify(Some(&fd));
@@ -135,9 +135,7 @@ pub extern "C" fn ckb_write(fd: u64, buf: *const c_void, length: *mut usize) -> 
 
 #[no_mangle]
 pub extern "C" fn ckb_inherited_fds(fds: *mut u64, length: *mut usize) -> c_int {
-    let out_fds = get_tx!(&TxContext::ctx_id())
-        .vm_info(&VMInfo::ctx_id())
-        .inherited_fds();
+    let out_fds = get_cur_tx!().vm_info(&VMInfo::ctx_id()).inherited_fds();
     let len = out_fds.len().min(utils::to_usize(length));
 
     copy_fds(&out_fds[0..len], fds);
@@ -169,7 +167,7 @@ pub extern "C" fn ckb_load_block_extension(
 
 fn new_vm_id(inherited_fds: &[Fd]) -> VmID {
     let cur_id = VMInfo::ctx_id();
-    let new_id = get_cur_tx_mut!().new_vm(Some(cur_id.clone()), &inherited_fds);
+    let new_id = get_cur_tx_mut!().new_vm(Some(cur_id.clone()), inherited_fds);
 
     inherited_fds.iter().all(|fd| {
         get_cur_tx_mut!().move_pipe(fd, new_id.clone());

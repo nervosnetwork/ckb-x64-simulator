@@ -37,6 +37,7 @@ pub fn program_entry() -> i8 {
         SpawnCmd::BaseIO1 => spawn_base_io1(&argv),
         SpawnCmd::BaseIO2 => spawn_base_io2(&argv),
         SpawnCmd::BaseIO3 => spawn_base_io3(&argv),
+        SpawnCmd::BaseIO4 => spawn_base_io4(&argv),
     };
 
     debug!("-B- Spawn-Child(pid:{}) End --", syscalls::process_id());
@@ -123,5 +124,20 @@ fn spawn_base_io3(argv: &[String]) -> i8 {
 
     assert_eq!(len, out.len());
     assert_eq!(out, buf[..out.len()]);
+    0
+}
+
+fn spawn_base_io4(argv: &[String]) -> i8 {
+    let mut std_fds: [u64; 2] = [0; 2];
+    syscalls::inherited_fds(&mut std_fds);
+
+    let mut out = vec![];
+    for arg in argv {
+        out.extend_from_slice(arg.as_bytes());
+    }
+
+    debug!("-B- write: {:02x?}", out);
+    let len = syscalls::write(std_fds[1], &out).expect("child write");
+    assert_eq!(len, 10);
     0
 }

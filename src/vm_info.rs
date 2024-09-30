@@ -216,19 +216,19 @@ impl TxContext {
         self.fds.contains_key(&fd.other_fd())
     }
 
-    pub fn read_data(&mut self, fd: &Fd, len: usize) -> Vec<u8> {
+    pub fn read_data(&mut self, fd: &Fd, len: usize) -> (Vec<u8>, usize) {
         let data = self.bufs.get(fd);
         if data.is_none() {
-            return Vec::new();
+            return (Vec::new(), 0);
         }
         let data = data.unwrap().clone();
 
         if len >= data.len() {
             self.bufs.remove(fd);
-            data
+            (data, 0)
         } else {
             *self.bufs.get_mut(fd).unwrap() = data[len..].to_vec();
-            data[..len].to_vec()
+            (data[..len].to_vec(), data.len() - len)
         }
     }
     pub fn write_data(&mut self, fd: &Fd, buf: &[u8]) {

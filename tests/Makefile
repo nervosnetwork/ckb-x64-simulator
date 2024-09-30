@@ -66,6 +66,7 @@ test: build
 	cargo test --package tests --lib -- tests::test_spawn_io1 --exact
 	cargo test --package tests --lib -- tests::test_spawn_io2 --exact
 	cargo test --package tests --lib -- tests::test_spawn_io3 --exact
+	cargo test --package tests --lib -- tests::test_spawn_io4 --exact
 
 #	cargo test $(CARGO_ARGS)
 
