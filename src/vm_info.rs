@@ -128,6 +128,10 @@ impl TxContext {
     pub fn ctx_id() -> TxID {
         TX_CONTEXT_ID.with(|f| f.borrow().clone())
     }
+    pub fn clean() {
+        TX_CONTEXT_ID.with(|f| *f.borrow_mut() = 0.into());
+        VM_CONTEXT_ID.with(|f| *f.borrow_mut() = 0.into());
+    }
 
     pub fn new_vm(&mut self, parent_id: Option<VmID>, fds: &[Fd]) -> VmID {
         assert!(parent_id.is_none() == fds.is_empty());

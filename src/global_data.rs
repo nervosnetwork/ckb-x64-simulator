@@ -89,6 +89,15 @@ impl GlobalData {
         }
     }
 
+    pub fn clean() {
+        unsafe {
+            GLOBAL_DATA_PTR = std::ptr::null_mut();
+        }
+        let mut data = Self::locked();
+        *data = Self::default();
+        TxContext::clean();
+    }
+
     pub fn set_tx(&mut self, ctx: TxContext) -> TxID {
         self.tx_ctx.insert(self.tx_ctx_id_count.next(), ctx);
         self.tx_ctx_id_count.clone()

@@ -455,9 +455,13 @@ pub extern "C" fn ckb_dlopen2(
 
 #[no_mangle]
 pub extern "C" fn set_script_info(ptr: *const std::ffi::c_void, tx_ctx_id: u64, vm_ctx_id: u64) {
-    GlobalData::set_ptr(ptr);
-    TxContext::set_ctx_id(tx_ctx_id.into());
-    VMInfo::set_ctx_id(vm_ctx_id.into());
+    if ptr.is_null() && tx_ctx_id == 0 && vm_ctx_id == 0 {
+        GlobalData::clean();
+    } else {
+        GlobalData::set_ptr(ptr);
+        TxContext::set_ctx_id(tx_ctx_id.into());
+        VMInfo::set_ctx_id(vm_ctx_id.into());
+    }
 }
 
 fn fetch_cell(index: u64, source: u64) -> Result<(CellOutput, Bytes), c_int> {
