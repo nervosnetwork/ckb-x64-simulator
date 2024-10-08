@@ -27,55 +27,67 @@ use spawn_cmd::SpawnCmd;
 pub fn program_entry() -> i8 {
     debug!("-A- Spawn-Parent(pid:{}) Begin --", syscalls::process_id());
 
-    let args = {
-        let script = ckb_std::high_level::load_script().expect("Load script");
-        let args: Bytes = script.args().unpack();
-        args.to_vec()
-    };
-    assert!(args.len() >= 1 + 32, "args is empty"); // cmd + code hash
-
-    let cmd: SpawnCmd = args[0].into();
-
-    let code_hash = Byte32::new(args[1..33].to_vec().try_into().unwrap());
-    let args = args[33..].to_vec();
-
-    let rc = match cmd {
-        SpawnCmd::Base => spawn_base(&code_hash, &args),
-        SpawnCmd::EmptyPipe => spawn_empty_pipe(&code_hash),
-        SpawnCmd::SpawnInvalidFd => spawn_invate_fd(&code_hash),
-        SpawnCmd::BaseIO1 => spawn_base_io1(&code_hash, &args),
-        SpawnCmd::BaseIO2 => spawn_base_io2(&code_hash, &args),
-        SpawnCmd::BaseIO3 => spawn_base_io3(&code_hash, &args),
-        SpawnCmd::BaseIO4 => spawn_base_io4(&code_hash, &args),
-    };
-
+    let rc = SpawnArgs::default().cmd_routing();
     debug!("-A- Spawn-Parent(pid:{}) End --", syscalls::process_id());
     rc
 }
 
-fn run_sapwn(
-    code_hash: &Byte32,
+struct SpawnArgs {
     cmd: SpawnCmd,
-    args: &[String],
-    fds: &[u64],
-) -> Result<u64, SysError> {
-    let cmd: u8 = cmd.into();
-    let args = [&[cmd.to_string()], args].concat();
-    let args: Vec<Vec<u8>> = args
-        .iter()
-        .map(|s| alloc::vec![s.as_bytes(), &[0u8]].concat())
-        .collect();
-    let argv: Vec<&CStr> = args
-        .iter()
-        .map(|s| CStr::from_bytes_until_nul(&s).unwrap())
-        .collect();
+    code_hash: Byte32,
+    _args: Vec<u8>,
+}
+impl Default for SpawnArgs {
+    fn default() -> Self {
+        let args = {
+            let script = ckb_std::high_level::load_script().expect("Load script");
+            let args: Bytes = script.args().unpack();
+            args.to_vec()
+        };
 
-    ckb_std::high_level::spawn_cell(
-        &code_hash.raw_data().to_vec(),
-        ckb_std::ckb_types::core::ScriptHashType::Data2,
-        &argv,
-        &fds,
-    )
+        let cmd = args[0].into();
+        let code_hash = Byte32::new(args[1..33].to_vec().try_into().unwrap());
+        let args = args[33..].to_vec();
+
+        Self {
+            cmd,
+            code_hash,
+            _args: args,
+        }
+    }
+}
+impl SpawnArgs {
+    fn cmd_routing(self) -> i8 {
+        match self.cmd {
+            SpawnCmd::Base => spawn_base(self),
+            SpawnCmd::EmptyPipe => spawn_empty_pipe(self),
+            SpawnCmd::SpawnInvalidFd => spawn_invate_fd(self),
+            SpawnCmd::BaseIO1 => spawn_base_io1(self),
+            SpawnCmd::BaseIO2 => spawn_base_io2(self),
+            SpawnCmd::BaseIO3 => spawn_base_io3(self),
+            SpawnCmd::BaseIO4 => spawn_base_io4(self),
+        }
+    }
+
+    fn new_spawn(self, args: &[String], fds: &[u64]) -> Result<u64, SysError> {
+        let cmd: u8 = self.cmd.into();
+        let args = [&[cmd.to_string()], args].concat();
+        let args: Vec<Vec<u8>> = args
+            .iter()
+            .map(|s| alloc::vec![s.as_bytes(), &[0u8]].concat())
+            .collect();
+        let argv: Vec<&CStr> = args
+            .iter()
+            .map(|s| CStr::from_bytes_until_nul(&s).unwrap())
+            .collect();
+
+        ckb_std::high_level::spawn_cell(
+            &self.code_hash.raw_data().to_vec(),
+            ckb_std::ckb_types::core::ScriptHashType::Data2,
+            &argv,
+            &fds,
+        )
+    }
 }
 
 fn new_pipe() -> ([u64; 2], [u64; 3]) {
@@ -90,9 +102,9 @@ fn new_pipe() -> ([u64; 2], [u64; 3]) {
     (std_fds, son_fds)
 }
 
-fn spawn_base(code_hash: &Byte32, _args: &[u8]) -> i8 {
+fn spawn_base(args: SpawnArgs) -> i8 {
     let (std_fds, son_fds) = new_pipe();
-    let pid = run_sapwn(&code_hash, SpawnCmd::Base, &[], &son_fds).expect("run spawn base");
+    let pid = args.new_spawn(&[], &son_fds).expect("run spawn base");
     assert_eq!(pid, 1);
 
     assert!(syscalls::close(std_fds[0]).is_ok());
@@ -106,7 +118,7 @@ fn spawn_base(code_hash: &Byte32, _args: &[u8]) -> i8 {
     0
 }
 
-fn spawn_empty_pipe(_code_hash: &Byte32) -> i8 {
+fn spawn_empty_pipe(_args: SpawnArgs) -> i8 {
     let (std_fds, son_fds) = new_pipe();
 
     assert_eq!(std_fds[0], 2);
@@ -122,21 +134,21 @@ fn spawn_empty_pipe(_code_hash: &Byte32) -> i8 {
     0
 }
 
-fn spawn_invate_fd(code_hash: &Byte32) -> i8 {
+fn spawn_invate_fd(args: SpawnArgs) -> i8 {
     let (_std_fds, son_fds) = new_pipe();
     let mut son_fds2 = son_fds;
     son_fds2[0] += 20;
-    let err = run_sapwn(&code_hash, SpawnCmd::SpawnInvalidFd, &[], &son_fds2).unwrap_err();
+    let err = args.new_spawn(&[], &son_fds2).unwrap_err();
     assert_eq!(err, ckb_std::error::SysError::InvalidFd);
     0
 }
 
-fn spawn_base_io1(code_hash: &Byte32, _args: &[u8]) -> i8 {
+fn spawn_base_io1(args: SpawnArgs) -> i8 {
     let (std_fds, son_fds) = new_pipe();
 
     let argv = ["hello".to_string(), "world".to_string()];
     debug!("-A- Spawn --");
-    let pid = run_sapwn(code_hash, SpawnCmd::BaseIO1, &argv, &son_fds).expect("run spawn base io");
+    let pid = args.new_spawn(&argv, &son_fds).expect("run spawn base io");
     debug!("-A- Spawn End, pid: {} --", pid);
     assert_eq!(pid, 1);
 
@@ -155,11 +167,11 @@ fn spawn_base_io1(code_hash: &Byte32, _args: &[u8]) -> i8 {
     0
 }
 
-fn spawn_base_io2(code_hash: &Byte32, _args: &[u8]) -> i8 {
+fn spawn_base_io2(args: SpawnArgs) -> i8 {
     let (std_fds, son_fds) = new_pipe();
 
     let argv = ["hello".to_string(), "world".to_string()];
-    let pid = run_sapwn(code_hash, SpawnCmd::BaseIO2, &argv, &son_fds).expect("run spawn base io");
+    let pid = args.new_spawn(&argv, &son_fds).expect("run spawn base io");
     assert_eq!(pid, 1);
 
     debug!("-A- Write --");
@@ -171,11 +183,11 @@ fn spawn_base_io2(code_hash: &Byte32, _args: &[u8]) -> i8 {
     0
 }
 
-fn spawn_base_io3(code_hash: &Byte32, _args: &[u8]) -> i8 {
+fn spawn_base_io3(args: SpawnArgs) -> i8 {
     let (std_fds, son_fds) = new_pipe();
 
     let argv = ["hello".to_string(), "world".to_string()];
-    let pid = run_sapwn(code_hash, SpawnCmd::BaseIO3, &argv, &son_fds).expect("run spawn base io");
+    let pid = args.new_spawn(&argv, &son_fds).expect("run spawn base io");
     assert_eq!(pid, 1);
 
     let write_buf = alloc::vec![argv[0].as_bytes(), argv[1].as_bytes()].concat();
@@ -185,11 +197,11 @@ fn spawn_base_io3(code_hash: &Byte32, _args: &[u8]) -> i8 {
     0
 }
 
-fn spawn_base_io4(code_hash: &Byte32, _argv: &[u8]) -> i8 {
+fn spawn_base_io4(args: SpawnArgs) -> i8 {
     let (std_fds, son_fds) = new_pipe();
 
     let argv = ["hello".to_string(), "world".to_string()];
-    let _pid = run_sapwn(code_hash, SpawnCmd::BaseIO4, &argv, &son_fds).expect("run spawn base io");
+    let _pid = args.new_spawn(&argv, &son_fds).expect("run spawn base io");
 
     let mut buf1 = [0u8; 5];
     syscalls::read(std_fds[0], &mut buf1).unwrap();

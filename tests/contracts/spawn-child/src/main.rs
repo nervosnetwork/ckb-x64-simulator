@@ -32,21 +32,25 @@ pub fn program_entry() -> i8 {
     let cmd: SpawnCmd = argv[0].as_str().into();
     let argv = argv[1..].to_vec();
 
-    let rc = match cmd {
-        SpawnCmd::Base => spawn_base(),
-        SpawnCmd::EmptyPipe => panic!("unsupport EmptyPipe"),
-        SpawnCmd::SpawnInvalidFd => panic!("unsupport SpawnInvalidFd"),
-        SpawnCmd::BaseIO1 => spawn_base_io1(&argv),
-        SpawnCmd::BaseIO2 => spawn_base_io2(&argv),
-        SpawnCmd::BaseIO3 => spawn_base_io3(&argv),
-        SpawnCmd::BaseIO4 => spawn_base_io4(&argv),
-    };
+    let rc = cmd_routing(cmd, &argv);
 
     debug!("-B- Spawn-Child(pid:{}) End --", syscalls::process_id());
     rc
 }
 
-fn spawn_base() -> i8 {
+fn cmd_routing(cmd: SpawnCmd, argv: &[String]) -> i8 {
+    match cmd {
+        SpawnCmd::Base => spawn_base(argv),
+        SpawnCmd::EmptyPipe => panic!("unsupport EmptyPipe"),
+        SpawnCmd::SpawnInvalidFd => panic!("unsupport SpawnInvalidFd"),
+        SpawnCmd::BaseIO1 => spawn_base_io1(argv),
+        SpawnCmd::BaseIO2 => spawn_base_io2(argv),
+        SpawnCmd::BaseIO3 => spawn_base_io3(argv),
+        SpawnCmd::BaseIO4 => spawn_base_io4(argv),
+    }
+}
+
+fn spawn_base(_argv: &[String]) -> i8 {
     let mut std_fds = [0u64; 2];
     syscalls::inherited_fds(&mut std_fds);
     assert_eq!(std_fds[0], 4);
