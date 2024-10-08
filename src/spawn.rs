@@ -34,8 +34,10 @@ pub extern "C" fn ckb_spawn_cell(
 ) -> c_int {
     // check fd:
     let inherited_fds = get_fds(inherited_fds);
-    if !inherited_fds.iter().any(|f| get_cur_tx!().has_fd(f)) {
-        return 6; // INVALID_FD
+    for it in &inherited_fds {
+        if let Err(err) = CheckSpawn::Def.check(it) {
+            return err;
+        }
     }
     if get_cur_tx!().max_vms_spawned() {
         return 8; //MAX_VMS_SPAWNED
@@ -78,7 +80,7 @@ pub extern "C" fn ckb_read(fd: u64, buf: *mut c_void, length: *mut usize) -> c_i
     let fd: Fd = fd.into();
 
     // Check
-    if let Err(e) = check_fd(true, &fd) {
+    if let Err(e) = CheckSpawn::Read.check(&fd) {
         return e;
     }
 
@@ -101,7 +103,7 @@ pub extern "C" fn ckb_read(fd: u64, buf: *mut c_void, length: *mut usize) -> c_i
 pub extern "C" fn ckb_write(fd: u64, buf: *const c_void, length: *mut usize) -> c_int {
     let fd: Fd = fd.into();
 
-    if let Err(e) = check_fd(false, &fd) {
+    if let Err(e) = CheckSpawn::Write.check(&fd) {
         return e;
     }
     let has_data = get_cur_tx_mut!().has_data(&fd);
@@ -199,17 +201,35 @@ fn get_fds(fds: *const u64) -> Vec<Fd> {
     }
 }
 
-fn check_fd(is_read: bool, fd: &Fd) -> Result<(), c_int> {
-    if fd.is_read() != is_read {
-        return Err(6); // CKB_INVALID_FD
+enum CheckSpawn {
+    Def,
+    Read,
+    Write,
+}
+impl CheckSpawn {
+    fn check(self, fd: &Fd) -> Result<(), c_int> {
+        match self {
+            Self::Def => (),
+            Self::Read => {
+                if !fd.is_read() {
+                    return Err(6); // CKB_INVALID_FD
+                }
+            }
+            Self::Write => {
+                if fd.is_read() {
+                    return Err(6); // CKB_INVALID_FD
+                }
+            }
+        }
+
+        let g = GlobalData::locked();
+        let tx_ctx = g.get_tx(&TxContext::ctx_id());
+        if !tx_ctx.has_fd(fd) {
+            return Err(6); // CKB_INVALID_FD
+        }
+        if !tx_ctx.chech_other_fd(fd) {
+            return Err(7); // OTHER_END_CLOSED
+        }
+        Ok(())
     }
-    let g = GlobalData::locked();
-    let tx_ctx = g.get_tx(&TxContext::ctx_id());
-    if !tx_ctx.has_fd(fd) {
-        return Err(6); // CKB_INVALID_FD
-    }
-    if !tx_ctx.chech_other_fd(fd) {
-        return Err(7); // OTHER_END_CLOSED
-    }
-    Ok(())
 }

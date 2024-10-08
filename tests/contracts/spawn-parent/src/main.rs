@@ -42,6 +42,7 @@ pub fn program_entry() -> i8 {
     let rc = match cmd {
         SpawnCmd::Base => spawn_base(&code_hash, &args),
         SpawnCmd::EmptyPipe => spawn_empty_pipe(&code_hash),
+        SpawnCmd::SpawnInvalidFd => spawn_invate_fd(&code_hash),
         SpawnCmd::BaseIO1 => spawn_base_io1(&code_hash, &args),
         SpawnCmd::BaseIO2 => spawn_base_io2(&code_hash, &args),
         SpawnCmd::BaseIO3 => spawn_base_io3(&code_hash, &args),
@@ -90,8 +91,6 @@ fn new_pipe() -> ([u64; 2], [u64; 3]) {
 }
 
 fn spawn_base(code_hash: &Byte32, _args: &[u8]) -> i8 {
-    debug!("-A- VM Version: {}", syscalls::vm_version().unwrap());
-
     let (std_fds, son_fds) = new_pipe();
     let pid = run_sapwn(&code_hash, SpawnCmd::Base, &[], &son_fds).expect("run spawn base");
     assert_eq!(pid, 1);
@@ -120,6 +119,15 @@ fn spawn_empty_pipe(_code_hash: &Byte32) -> i8 {
     assert!(syscalls::close(std_fds[1]).is_ok());
     assert!(syscalls::close(son_fds[0]).is_ok());
     assert!(syscalls::close(son_fds[1]).is_ok());
+    0
+}
+
+fn spawn_invate_fd(code_hash: &Byte32) -> i8 {
+    let (_std_fds, son_fds) = new_pipe();
+    let mut son_fds2 = son_fds;
+    son_fds2[0] += 20;
+    let err = run_sapwn(&code_hash, SpawnCmd::SpawnInvalidFd, &[], &son_fds2).unwrap_err();
+    assert_eq!(err, ckb_std::error::SysError::InvalidFd);
     0
 }
 

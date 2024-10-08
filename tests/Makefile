@@ -31,7 +31,7 @@ export MODE
 export CLANG
 export BUILD_DIR
 
-default: build test
+default: build test test-contracts
 
 build:
 	@if [ "x$(CLEAN_BUILD_DIR_FIRST)" = "xtrue" ]; then \
@@ -62,6 +62,9 @@ run:
 # there is nothing wrong invoking cargo directly instead of make.
 test: build
 	cargo test $(CARGO_ARGS) -- --test-threads=1
+
+test-contracts: build
+	cargo test --no-default-features $(CARGO_ARGS)
 
 check:
 	cargo check $(CARGO_ARGS)

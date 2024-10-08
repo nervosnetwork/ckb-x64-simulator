@@ -8,6 +8,7 @@ extern crate num_derive;
 pub enum SpawnCmd {
     Base = 1,
     EmptyPipe,
+    SpawnInvalidFd,
     BaseIO1,
     BaseIO2,
     BaseIO3,

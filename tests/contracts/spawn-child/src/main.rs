@@ -35,6 +35,7 @@ pub fn program_entry() -> i8 {
     let rc = match cmd {
         SpawnCmd::Base => spawn_base(),
         SpawnCmd::EmptyPipe => panic!("unsupport EmptyPipe"),
+        SpawnCmd::SpawnInvalidFd => panic!("unsupport SpawnInvalidFd"),
         SpawnCmd::BaseIO1 => spawn_base_io1(&argv),
         SpawnCmd::BaseIO2 => spawn_base_io2(&argv),
         SpawnCmd::BaseIO3 => spawn_base_io3(&argv),

@@ -180,6 +180,11 @@ fn test_spawn_empty_pipe() {
 }
 
 #[test]
+fn test_spawn_invalid_fd() {
+    run_spawn(SpawnCmd::SpawnInvalidFd, &[]);
+}
+
+#[test]
 fn test_spawn_io1() {
     run_spawn(SpawnCmd::BaseIO1, &[]);
 }
