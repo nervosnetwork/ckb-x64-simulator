@@ -454,7 +454,7 @@ dependencies = [
 [[package]]
 name = "ckb-std"
 version = "0.16.0"
-source = "git+https://github.com/joii2020/ckb-std.git?rev=5bd8c01#5bd8c01cb81665aa6b25c59fb59bb8687fed0302"
+source = "git+https://github.com/joii2020/ckb-std.git?rev=a4dfebc#a4dfebcb3136b6bde392e1d71ebe1156c5a4c9bf"
 dependencies = [
  "buddy-alloc",
  "cc",
@@ -494,12 +494,12 @@ name = "ckb-testtool"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f39aec2471d611cee13f2e39ef1f5419150ba94bc8fd3a3db520876a6fe0d5d2"
-replace = "ckb-testtool 0.13.1 (git+https://github.com/joii2020/ckb-testtool.git?rev=feac46e)"
+replace = "ckb-testtool 0.13.1 (git+https://github.com/joii2020/ckb-testtool.git?rev=281c4ec)"
 
 [[package]]
 name = "ckb-testtool"
 version = "0.13.1"
-source = "git+https://github.com/joii2020/ckb-testtool.git?rev=feac46e#feac46e82b19fa5c4ee431a0207ec1c816c91e71"
+source = "git+https://github.com/joii2020/ckb-testtool.git?rev=281c4ec#281c4ec6e8db9c6e86d9196b734f3494539165b2"
 dependencies = [
  "ckb-always-success-script",
  "ckb-chain-spec",
@@ -1162,6 +1162,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-derive"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed3955f1a9c7c0c15e092f9c887db08b1fc683305fdf6eb6684f22555355e202"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.77",
+]
+
+[[package]]
+name = "num-traits"
+version = "0.2.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "numext-constructor"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1631,6 +1651,10 @@ dependencies = [
 [[package]]
 name = "spawn_cmd"
 version = "0.1.0"
+dependencies = [
+ "num-derive",
+ "num-traits",
+]
 
 [[package]]
 name = "ssri"
