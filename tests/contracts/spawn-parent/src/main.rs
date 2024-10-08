@@ -32,6 +32,7 @@ pub fn program_entry() -> i8 {
     rc
 }
 
+#[derive(Clone)]
 struct SpawnArgs {
     cmd: SpawnCmd,
     code_hash: Byte32,
@@ -62,6 +63,7 @@ impl SpawnArgs {
             SpawnCmd::Base => spawn_base(self),
             SpawnCmd::EmptyPipe => spawn_empty_pipe(self),
             SpawnCmd::SpawnInvalidFd => spawn_invate_fd(self),
+            SpawnCmd::SpawnMaxVms => spawn_max_vms(self),
             SpawnCmd::BaseIO1 => spawn_base_io1(self),
             SpawnCmd::BaseIO2 => spawn_base_io2(self),
             SpawnCmd::BaseIO3 => spawn_base_io3(self),
@@ -140,6 +142,21 @@ fn spawn_invate_fd(args: SpawnArgs) -> i8 {
     son_fds2[0] += 20;
     let err = args.new_spawn(&[], &son_fds2).unwrap_err();
     assert_eq!(err, ckb_std::error::SysError::InvalidFd);
+    0
+}
+
+fn spawn_max_vms(args: SpawnArgs) -> i8 {
+    for _ in 0..16 {
+        let (r0, _w0) = syscalls::pipe().unwrap();
+        let son_fds = [r0, 0];
+        let _pid = args.clone().new_spawn(&[], &son_fds).unwrap();
+    }
+
+    let (r0, _w0) = syscalls::pipe().unwrap();
+    let son_fds = [r0, 0];
+    let err = args.clone().new_spawn(&[], &son_fds).unwrap_err();
+    assert_eq!(err, SysError::MaxVmsSpawned);
+
     0
 }
 

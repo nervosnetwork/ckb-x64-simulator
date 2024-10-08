@@ -178,7 +178,7 @@ impl TxContext {
             .unwrap_or_else(|| panic!("unknow vm id: {:?}", id))
     }
     pub fn max_vms_spawned(&self) -> bool {
-        u64::from(self.vm_id_count.clone()) >= MAX_VMS_COUNT
+        u64::from(self.vm_id_count.clone()) > MAX_VMS_COUNT
     }
 
     pub fn new_pipe(&mut self) -> (Fd, Fd) {

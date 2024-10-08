@@ -4,11 +4,12 @@
 extern crate num_derive;
 
 #[repr(u8)]
-#[derive(FromPrimitive, ToPrimitive)]
+#[derive(FromPrimitive, ToPrimitive, Clone)]
 pub enum SpawnCmd {
     Base = 1,
     EmptyPipe,
     SpawnInvalidFd,
+    SpawnMaxVms,
     BaseIO1,
     BaseIO2,
     BaseIO3,

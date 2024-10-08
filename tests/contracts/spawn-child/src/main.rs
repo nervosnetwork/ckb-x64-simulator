@@ -43,6 +43,7 @@ fn cmd_routing(cmd: SpawnCmd, argv: &[String]) -> i8 {
         SpawnCmd::Base => spawn_base(argv),
         SpawnCmd::EmptyPipe => panic!("unsupport EmptyPipe"),
         SpawnCmd::SpawnInvalidFd => panic!("unsupport SpawnInvalidFd"),
+        SpawnCmd::SpawnMaxVms => spawn_max_vms(argv),
         SpawnCmd::BaseIO1 => spawn_base_io1(argv),
         SpawnCmd::BaseIO2 => spawn_base_io2(argv),
         SpawnCmd::BaseIO3 => spawn_base_io3(argv),
@@ -61,6 +62,16 @@ fn spawn_base(_argv: &[String]) -> i8 {
     assert_eq!(std_fds2[0], 4);
     assert_eq!(std_fds2[1], 3);
     assert_eq!(std_fds2[2], 0);
+
+    0
+}
+
+fn spawn_max_vms(_argv: &[String]) -> i8 {
+    let mut std_fds: [u64; 1] = [0; 1];
+    syscalls::inherited_fds(&mut std_fds);
+
+    let mut buf = [0u8; 32];
+    syscalls::read(std_fds[0], &mut buf).expect("child write");
 
     0
 }

@@ -12,7 +12,7 @@ use ckb_testtool::{
 };
 use spawn_cmd::SpawnCmd;
 
-const MAX_CYCLES: u64 = 500_0000;
+const MAX_CYCLES: u64 = 500_000_000_000;
 
 #[test]
 fn test_exec() {
@@ -182,6 +182,11 @@ fn test_spawn_empty_pipe() {
 #[test]
 fn test_spawn_invalid_fd() {
     run_spawn(SpawnCmd::SpawnInvalidFd, &[]);
+}
+
+#[test]
+fn test_spawn_max_vms() {
+    run_spawn(SpawnCmd::SpawnMaxVms, &[]);
 }
 
 #[test]
