@@ -6,6 +6,7 @@ use crate::{
 use std::{
     ffi::{c_int, c_void},
     path::PathBuf,
+    thread::JoinHandle,
 };
 
 pub fn get_simulator_path(
@@ -72,7 +73,12 @@ impl CkbNativeSimulator {
         }
     }
 
-    pub fn ckb_std_main_async(self, argc: i32, argv: *const *const u8, pid: &VmID) {
+    pub fn ckb_std_main_async(
+        self,
+        argc: i32,
+        argv: *const *const u8,
+        pid: &VmID,
+    ) -> JoinHandle<i8> {
         let args = to_vec_args(argc, argv as *const *const i8);
         let tx_ctx_id = TxContext::ctx_id();
 
@@ -86,7 +92,7 @@ impl CkbNativeSimulator {
             let rc = self.ckb_std_main(args);
             get_vm!(&tx_ctx_id, &pid2).notify(None);
             rc
-        });
+        })
     }
 
     pub fn update_script_info(&self, tx_ctx_id: TxID, vm_ctx_id: VmID) {

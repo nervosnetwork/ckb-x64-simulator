@@ -7,6 +7,7 @@ extern crate num_derive;
 #[derive(FromPrimitive, ToPrimitive, Clone)]
 pub enum SpawnCmd {
     Base = 1,
+    BaseRetNot0,
     EmptyPipe,
     SpawnInvalidFd,
     SpawnMaxVms,
@@ -26,7 +27,7 @@ impl From<u8> for SpawnCmd {
 
 impl From<&str> for SpawnCmd {
     fn from(value: &str) -> Self {
-        Self::from_u8(u8::from_str_radix(value, 10).expect("parse cmd")).unwrap()
+        value.parse::<u8>().unwrap().into()
     }
 }
 

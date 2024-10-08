@@ -45,9 +45,10 @@ pub extern "C" fn ckb_spawn_cell(
 
     let ckb_sim = utils::CkbNativeSimulator::new_by_hash(code_hash, hash_type, offset, length);
     let new_id = new_vm_id(&inherited_fds);
-    ckb_sim.ckb_std_main_async(argc, argv, &new_id);
+    let jh = ckb_sim.ckb_std_main_async(argc, argv, &new_id);
 
-    let event = get_cur_vm!().wait_by_pid(&new_id);
+    get_cur_tx_mut!().vm_mut_info(&new_id).set_join(jh);
+    let event = get_cur_vm!().get_event_by_pid(&new_id);
     event.wait();
 
     unsafe { *({ pid }) = new_id.into() };
@@ -55,8 +56,10 @@ pub extern "C" fn ckb_spawn_cell(
 }
 
 #[no_mangle]
-pub extern "C" fn ckb_wait(_pid: u64, _code: *mut i8) -> c_int {
-    panic!("unsupport");
+pub extern "C" fn ckb_wait(pid: u64, code: *mut i8) -> c_int {
+    let c = get_cur_tx_mut!().vm_mut_info(&pid.into()).wait_exit();
+    unsafe { *({ code }) = c };
+    0
 }
 
 #[no_mangle]

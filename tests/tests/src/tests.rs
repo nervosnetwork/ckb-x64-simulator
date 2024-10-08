@@ -175,6 +175,11 @@ fn test_spawn_base() {
 }
 
 #[test]
+fn test_spawn_base_ret_not0() {
+    run_spawn(SpawnCmd::BaseRetNot0, &[]);
+}
+
+#[test]
 fn test_spawn_empty_pipe() {
     run_spawn(SpawnCmd::EmptyPipe, &[]);
 }

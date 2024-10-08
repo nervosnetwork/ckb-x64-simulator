@@ -61,6 +61,7 @@ impl SpawnArgs {
     fn cmd_routing(self) -> i8 {
         match self.cmd {
             SpawnCmd::Base => spawn_base(self),
+            SpawnCmd::BaseRetNot0 => spawn_base_not0(self),
             SpawnCmd::EmptyPipe => spawn_empty_pipe(self),
             SpawnCmd::SpawnInvalidFd => spawn_invate_fd(self),
             SpawnCmd::SpawnMaxVms => spawn_max_vms(self),
@@ -80,14 +81,14 @@ impl SpawnArgs {
             .collect();
         let argv: Vec<&CStr> = args
             .iter()
-            .map(|s| CStr::from_bytes_until_nul(&s).unwrap())
+            .map(|s| CStr::from_bytes_until_nul(s).unwrap())
             .collect();
 
         ckb_std::high_level::spawn_cell(
-            &self.code_hash.raw_data().to_vec(),
+            &self.code_hash.raw_data(),
             ckb_std::ckb_types::core::ScriptHashType::Data2,
             &argv,
-            &fds,
+            fds,
         )
     }
 }
@@ -117,6 +118,17 @@ fn spawn_base(args: SpawnArgs) -> i8 {
 
     assert_eq!(syscalls::process_id(), 0);
 
+    0
+}
+
+fn spawn_base_not0(args: SpawnArgs) -> i8 {
+    let pid = args.new_spawn(&[], &[0]).expect("run spawn base r");
+    assert_eq!(pid, 1);
+
+    let rc_code = syscalls::wait(pid).unwrap();
+
+    assert_eq!(rc_code, 2);
+    debug!("-A- rc code: {}", rc_code);
     0
 }
 

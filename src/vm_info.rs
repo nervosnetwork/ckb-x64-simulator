@@ -3,6 +3,7 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     sync::{Arc, Condvar, Mutex},
+    thread::JoinHandle,
 };
 
 thread_local! {
@@ -29,6 +30,9 @@ pub struct VMInfo {
     event_notify: Event,
 
     children: HashMap<VmID, Child>, // wait, notify
+
+    join_handle: Option<JoinHandle<i8>>,
+    wait_exit: bool,
 }
 impl VMInfo {
     pub fn set_ctx_id(id: VmID) {
@@ -89,7 +93,7 @@ impl VMInfo {
         }
     }
 
-    pub fn wait_by_pid(&self, id: &VmID) -> Event {
+    pub fn get_event_by_pid(&self, id: &VmID) -> Event {
         if id == &self.id {
             self.event_wait.clone()
         } else if let Some(c) = self.get_child_by_id(id) {
@@ -97,6 +101,19 @@ impl VMInfo {
         } else {
             panic!("notify unknow pid {:?}", id);
         }
+    }
+
+    pub fn set_join(&mut self, j: JoinHandle<i8>) {
+        self.join_handle = Some(j);
+    }
+
+    pub fn wait_exit(&mut self) -> i8 {
+        self.event_notify.notify();
+        self.event_wait.notify();
+        self.wait_exit = true;
+
+        let join_handle = self.join_handle.take();
+        join_handle.unwrap().join().unwrap()
     }
 }
 
@@ -134,8 +151,6 @@ impl TxContext {
     }
 
     pub fn new_vm(&mut self, parent_id: Option<VmID>, fds: &[Fd]) -> VmID {
-        assert!(parent_id.is_none() == fds.is_empty());
-
         let id = self.vm_id_count.next();
         let (e_wait, e_notify) = if parent_id.is_some() {
             let p = self
@@ -166,6 +181,8 @@ impl TxContext {
             event_notify: e_wait,
             event_wait: e_notify,
             children: Default::default(),
+            join_handle: None,
+            wait_exit: false,
         };
 
         self.vm_info.insert(id.clone(), p);
@@ -175,6 +192,11 @@ impl TxContext {
     pub fn vm_info(&self, id: &VmID) -> &VMInfo {
         self.vm_info
             .get(id)
+            .unwrap_or_else(|| panic!("unknow vm id: {:?}", id))
+    }
+    pub fn vm_mut_info(&mut self, id: &VmID) -> &mut VMInfo {
+        self.vm_info
+            .get_mut(id)
             .unwrap_or_else(|| panic!("unknow vm id: {:?}", id))
     }
     pub fn max_vms_spawned(&self) -> bool {

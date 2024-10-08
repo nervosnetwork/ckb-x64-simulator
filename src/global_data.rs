@@ -157,3 +157,12 @@ macro_rules! get_cur_vm {
             .vm_info(&VMInfo::ctx_id())
     };
 }
+
+#[macro_export]
+macro_rules! get_cur_vm_mut {
+    () => {
+        GlobalData::locked()
+            .get_tx_mut(&TxContext::ctx_id())
+            .vm_mut_info(&VMInfo::ctx_id())
+    };
+}

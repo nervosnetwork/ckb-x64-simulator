@@ -22,10 +22,10 @@ pub fn program_entry() -> i8 {
     debug!("-B- Spawn-Child(pid:{}) Begin --", syscalls::process_id());
 
     let argv = ckb_std::env::argv();
-    assert!(argv.len() >= 1, "child args is failed: {}", argv.len());
+    assert!(!argv.is_empty(), "child args is failed: {}", argv.len());
 
     let argv: Vec<String> = argv
-        .into_iter()
+        .iter()
         .map(|f| f.to_str().unwrap().to_string())
         .collect();
 
@@ -41,6 +41,7 @@ pub fn program_entry() -> i8 {
 fn cmd_routing(cmd: SpawnCmd, argv: &[String]) -> i8 {
     match cmd {
         SpawnCmd::Base => spawn_base(argv),
+        SpawnCmd::BaseRetNot0 => spawn_base_not0(argv),
         SpawnCmd::EmptyPipe => panic!("unsupport EmptyPipe"),
         SpawnCmd::SpawnInvalidFd => panic!("unsupport SpawnInvalidFd"),
         SpawnCmd::SpawnMaxVms => spawn_max_vms(argv),
@@ -64,6 +65,10 @@ fn spawn_base(_argv: &[String]) -> i8 {
     assert_eq!(std_fds2[2], 0);
 
     0
+}
+
+fn spawn_base_not0(_argv: &[String]) -> i8 {
+    2
 }
 
 fn spawn_max_vms(_argv: &[String]) -> i8 {
