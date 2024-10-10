@@ -2,9 +2,10 @@
 // See https://github.com/xxuejie/ckb-native-build-sample/blob/main/tests/src/tests.rs for examples
 
 use ckb_testtool::{
+    ckb_error::Error as CKBError,
     ckb_types::{
         bytes::Bytes,
-        core::{DepType, ScriptHashType, TransactionBuilder},
+        core::{Cycle, DepType, ScriptHashType, TransactionBuilder},
         packed::{CellDep, CellInput, CellOutput},
         prelude::*,
     },
@@ -91,7 +92,7 @@ fn test_exec() {
         .expect("pass verification");
 }
 
-fn run_spawn(cmd: SpawnCmd, args: &[u8]) {
+fn run_spawn(cmd: SpawnCmd, args: &[u8]) -> Result<Cycle, CKBError> {
     let mut context = Context::default();
     context.add_contract_dir("../target/debug/");
     context.add_contract_dir("target/debug/");
@@ -164,58 +165,84 @@ fn run_spawn(cmd: SpawnCmd, args: &[u8]) {
     let tx = context.complete_tx(tx);
 
     // run
-    context
-        .verify_tx(&tx, MAX_CYCLES)
-        .expect("pass verification");
+    context.verify_tx(&tx, MAX_CYCLES)
+}
+
+fn run_spawn_success(cmd: SpawnCmd, args: &[u8]) {
+    run_spawn(cmd, args).expect("pass verification");
+}
+
+fn _run_spawn_failed(cmd: SpawnCmd, args: &[u8]) {
+    let err = run_spawn(cmd, args).unwrap_err();
+    println!("Spawn error: {:?}", err);
 }
 
 #[test]
 fn test_spawn_base() {
-    run_spawn(SpawnCmd::Base, &[]);
+    run_spawn_success(SpawnCmd::Base, &[]);
 }
 
 #[test]
-fn test_spawn_base_ret_not0() {
-    run_spawn(SpawnCmd::BaseRetNot0, &[]);
+fn test_spawn_ret_not0() {
+    run_spawn_success(SpawnCmd::SpawnRetNot0, &[]);
+}
+
+// #[test]
+// fn test_wait_ret_not0() {
+//     run_spawn_failed(SpawnCmd::WaitRetNot0, &[]);
+// }
+
+#[test]
+fn test_wait_invalid_pid() {
+    run_spawn_success(SpawnCmd::WaitInvalidPid, &[]);
 }
 
 #[test]
 fn test_spawn_empty_pipe() {
-    run_spawn(SpawnCmd::EmptyPipe, &[]);
+    run_spawn_success(SpawnCmd::EmptyPipe, &[]);
 }
 
 #[test]
 fn test_spawn_invalid_fd() {
-    run_spawn(SpawnCmd::SpawnInvalidFd, &[]);
+    run_spawn_success(SpawnCmd::SpawnInvalidFd, &[]);
 }
 
 #[test]
 fn test_spawn_max_vms() {
-    run_spawn(SpawnCmd::SpawnMaxVms, &[]);
+    run_spawn_success(SpawnCmd::SpawnMaxVms, &[]);
+}
+
+#[test]
+fn test_pipe_max_fds() {
+    run_spawn_success(SpawnCmd::PipeMaxFds, &[]);
 }
 
 #[test]
 fn test_spawn_io1() {
-    run_spawn(SpawnCmd::BaseIO1, &[]);
+    run_spawn_success(SpawnCmd::BaseIO1, &[]);
 }
 
 #[test]
 fn test_spawn_io2() {
-    run_spawn(SpawnCmd::BaseIO2, &[]);
+    run_spawn_success(SpawnCmd::BaseIO2, &[]);
 }
 
 #[test]
 fn test_spawn_io3() {
-    run_spawn(SpawnCmd::BaseIO3, &[]);
+    run_spawn_success(SpawnCmd::BaseIO3, &[]);
 }
 
 #[test]
 fn test_spawn_io4() {
-    run_spawn(SpawnCmd::BaseIO4, &[]);
+    run_spawn_success(SpawnCmd::BaseIO4, &[]);
 }
 
-// #[test]
-// fn test_multi_spawn() {
-//     run_spawn(SpawnCmd::EmptyPipe, &[]);
-//     run_spawn(SpawnCmd::EmptyPipe, &[]);
-// }
+#[test]
+fn test_io_read_more() {
+    run_spawn_success(SpawnCmd::IOReadMore, &[]);
+}
+
+#[test]
+fn test_io_write_more() {
+    run_spawn_success(SpawnCmd::IOWriteMore, &[]);
+}

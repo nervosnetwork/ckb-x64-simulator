@@ -4,17 +4,22 @@
 extern crate num_derive;
 
 #[repr(u8)]
-#[derive(FromPrimitive, ToPrimitive, Clone)]
+#[derive(FromPrimitive, ToPrimitive, Clone, Debug)]
 pub enum SpawnCmd {
     Base = 1,
-    BaseRetNot0,
+    SpawnRetNot0,
+    WaitRetNot0,
+    WaitInvalidPid,
     EmptyPipe,
     SpawnInvalidFd,
     SpawnMaxVms,
+    PipeMaxFds,
     BaseIO1,
     BaseIO2,
     BaseIO3,
     BaseIO4,
+    IOReadMore,
+    IOWriteMore,
 }
 
 use num_traits::{FromPrimitive, ToPrimitive};

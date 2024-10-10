@@ -39,16 +39,22 @@ pub fn program_entry() -> i8 {
 }
 
 fn cmd_routing(cmd: SpawnCmd, argv: &[String]) -> i8 {
+    debug!("-B- cmd: {:?}", cmd);
     match cmd {
         SpawnCmd::Base => spawn_base(argv),
-        SpawnCmd::BaseRetNot0 => spawn_base_not0(argv),
+        SpawnCmd::SpawnRetNot0 => spawn_ret_not0(argv),
+        SpawnCmd::WaitRetNot0 => wait_ret_not0(argv),
+        SpawnCmd::WaitInvalidPid => panic!("pass"),
         SpawnCmd::EmptyPipe => panic!("unsupport EmptyPipe"),
         SpawnCmd::SpawnInvalidFd => panic!("unsupport SpawnInvalidFd"),
         SpawnCmd::SpawnMaxVms => spawn_max_vms(argv),
+        SpawnCmd::PipeMaxFds => panic!("pass"),
         SpawnCmd::BaseIO1 => spawn_base_io1(argv),
         SpawnCmd::BaseIO2 => spawn_base_io2(argv),
         SpawnCmd::BaseIO3 => spawn_base_io3(argv),
         SpawnCmd::BaseIO4 => spawn_base_io4(argv),
+        SpawnCmd::IOReadMore => io_read_more(argv),
+        SpawnCmd::IOWriteMore => io_write_more(argv),
     }
 }
 
@@ -67,7 +73,17 @@ fn spawn_base(_argv: &[String]) -> i8 {
     0
 }
 
-fn spawn_base_not0(_argv: &[String]) -> i8 {
+fn spawn_ret_not0(_argv: &[String]) -> i8 {
+    3
+}
+
+fn wait_ret_not0(_argv: &[String]) -> i8 {
+    let mut std_fds: [u64; 1] = [0; 1];
+    syscalls::inherited_fds(&mut std_fds);
+
+    let mut buf = [0u8; 32];
+    let _ = syscalls::read(std_fds[0], &mut buf);
+
     2
 }
 
@@ -87,18 +103,26 @@ fn spawn_base_io1(argv: &[String]) -> i8 {
     syscalls::inherited_fds(&mut std_fds);
     debug!("-B- InheritedFds {} {} End --", std_fds[0], std_fds[1]);
 
-    let mut out = vec![];
+    let mut buffer = vec![];
     for arg in argv {
-        out.extend_from_slice(arg.as_bytes());
+        buffer.extend_from_slice(arg.as_bytes());
     }
 
-    debug!("-B- Write, fd: {}, out({}) --", std_fds[1], out.len());
-    let len = syscalls::write(std_fds[1], &out).expect("child write");
-    debug!("-B-    out: {:02x?}", out);
+    debug!(
+        "-B- Write, fd: {}, buf_len({}) --",
+        std_fds[1],
+        buffer.len()
+    );
+    let len = syscalls::write(std_fds[1], &buffer).expect("child write");
+    debug!("-B-    buf: {:02x?}", buffer);
     debug!("-B- Write End --");
     assert_eq!(len, 10);
 
-    debug!("-B- Write2, fd: {}, out({}) --", std_fds[1], out.len());
+    debug!(
+        "-B- Write2, fd: {}, buf_len({}) --",
+        std_fds[1],
+        buffer.len()
+    );
     let bufff = [0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 5, 6, 7, 8];
     let len = syscalls::write(std_fds[1], &bufff).expect("child write");
     debug!("-B- Write2 End --");
@@ -161,5 +185,46 @@ fn spawn_base_io4(argv: &[String]) -> i8 {
     debug!("-B- write: {:02x?}", out);
     let len = syscalls::write(std_fds[1], &out).expect("child write");
     assert_eq!(len, 10);
+    0
+}
+
+fn io_read_more(_argv: &[String]) -> i8 {
+    let fd_w = {
+        let mut std_fds = [0; 1];
+        syscalls::inherited_fds(&mut std_fds);
+        std_fds[0]
+    };
+
+    let mut buffer1 = [0u8; 32];
+    let mut count = 0;
+    buffer1.iter_mut().all(|f| {
+        *f = count;
+        count += 1;
+        true
+    });
+    syscalls::write(fd_w, &buffer1).unwrap();
+
+    0
+}
+
+fn io_write_more(argv: &[String]) -> i8 {
+    let fd_r = {
+        let mut std_fds = [0; 1];
+        syscalls::inherited_fds(&mut std_fds);
+        std_fds[0]
+    };
+
+    let mut out = vec![];
+    for arg in argv {
+        out.extend_from_slice(arg.as_bytes());
+    }
+
+    debug!("-B- Read --");
+    let mut buf: [u8; 256] = [0; 256];
+    let len = syscalls::read(fd_r, &mut buf).expect("read 1");
+    debug!("-B- Read End --");
+
+    assert_eq!(len, out.len());
+    assert_eq!(out, buf[..out.len()]);
     0
 }

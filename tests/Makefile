@@ -31,7 +31,7 @@ export MODE
 export CLANG
 export BUILD_DIR
 
-default: build test test-contracts
+default: check clippy build test test-contracts
 
 build:
 	@if [ "x$(CLEAN_BUILD_DIR_FIRST)" = "xtrue" ]; then \

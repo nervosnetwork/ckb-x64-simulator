@@ -88,8 +88,11 @@ impl CkbNativeSimulator {
             TxContext::set_ctx_id(tx_ctx_id.clone());
 
             self.update_script_info(tx_ctx_id.clone(), pid2.clone());
-
             let rc = self.ckb_std_main(args);
+
+            // close all fd before exit
+            crate::get_cur_tx_mut!().close_all(&pid2);
+
             get_vm!(&tx_ctx_id, &pid2).notify(None);
             rc
         })

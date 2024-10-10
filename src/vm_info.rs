@@ -202,6 +202,9 @@ impl TxContext {
     pub fn max_vms_spawned(&self) -> bool {
         u64::from(self.vm_id_count.clone()) > MAX_VMS_COUNT
     }
+    pub fn has_vm(&self, id: &VmID) -> bool {
+        self.vm_info.contains_key(id)
+    }
 
     pub fn new_pipe(&mut self) -> (Fd, Fd) {
         let pid = VMInfo::ctx_id();
@@ -229,6 +232,17 @@ impl TxContext {
             .get_mut(fd)
             .unwrap_or_else(|| panic!("unknow fd: {:?}", fd));
         *f = pid;
+    }
+    pub fn close_all(&mut self, id: &VmID) {
+        let keys_to_rm: Vec<Fd> = self
+            .fds
+            .iter()
+            .filter(|(_k, v)| v == &id)
+            .map(|(k, _v)| k.clone())
+            .collect();
+        for k in keys_to_rm {
+            self.fds.remove(&k);
+        }
     }
 
     pub fn has_fd(&self, fd: &Fd) -> bool {
