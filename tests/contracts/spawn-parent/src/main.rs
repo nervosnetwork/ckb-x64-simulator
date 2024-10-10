@@ -251,6 +251,10 @@ fn spawn_base_io1(args: SpawnArgs) -> i8 {
     debug!("-A- Spawn End, pid: {} --", pid);
     assert_eq!(pid, 1);
 
+    let mut buf = [0; 10];
+    let err = syscalls::read(std_fds[0] + 20, &mut buf).unwrap_err();
+    assert_eq!(err, SysError::InvalidFd);
+
     debug!("-A- Read --");
     let mut buf = [0; 10];
     let len = syscalls::read(std_fds[0], &mut buf).expect("read 1");
@@ -332,19 +336,21 @@ fn io_read_more(args: SpawnArgs) -> i8 {
     let pid = args.new_spawn(&[], &[fd_w, 0]).expect("run spawn base io");
 
     let mut buffer = [0u8; 128];
-    let mut count = 0;
 
     debug!("-A- Read Begin");
     let readed_len = syscalls::read(fd_r, &mut buffer).unwrap();
     debug!("-A- Readed len: {}", readed_len);
 
-    for i in 0..readed_len {
-        assert_eq!(buffer[i], count);
-        count += 1;
+    for (count, it) in buffer.iter().take(readed_len).enumerate() {
+        assert_eq!(it, &(count as u8));
     }
 
     let code = syscalls::wait(pid).unwrap();
     assert_eq!(code, 0);
+
+    let err = syscalls::read(fd_r, &mut buffer).unwrap_err();
+    assert_eq!(err, SysError::OtherEndClosed);
+
     0
 }
 
@@ -357,11 +363,20 @@ fn io_write_more(args: SpawnArgs) -> i8 {
         .expect("run spawn base io");
     assert_eq!(pid, 1);
 
+    let err = syscalls::write(fd_w + 20, &[0; 8]).unwrap_err();
+    assert_eq!(err, SysError::InvalidFd);
+
     debug!("-A- Write --");
     let write_buf = alloc::vec![argv[0].as_bytes(), argv[1].as_bytes()].concat();
     let len = syscalls::write(fd_w, &write_buf).expect("write");
     debug!("-A- Write End --");
     assert_eq!(len, write_buf.len());
+
+    let code = syscalls::wait(pid).unwrap();
+    assert_eq!(code, 0);
+
+    let err = syscalls::write(fd_w, &[0; 8]).unwrap_err();
+    assert_eq!(err, SysError::OtherEndClosed);
 
     0
 }
