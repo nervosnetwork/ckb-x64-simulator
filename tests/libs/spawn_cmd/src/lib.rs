@@ -3,6 +3,8 @@
 #[macro_use]
 extern crate num_derive;
 
+use num_traits::{FromPrimitive, ToPrimitive};
+
 #[repr(u8)]
 #[derive(FromPrimitive, ToPrimitive, Clone, Debug)]
 pub enum SpawnCmd {
@@ -22,22 +24,42 @@ pub enum SpawnCmd {
     IOWriteMore,
 }
 
-use num_traits::{FromPrimitive, ToPrimitive};
-
 impl From<u8> for SpawnCmd {
     fn from(value: u8) -> Self {
         Self::from_u8(value).unwrap()
     }
 }
-
 impl From<&str> for SpawnCmd {
     fn from(value: &str) -> Self {
         value.parse::<u8>().unwrap().into()
     }
 }
-
 impl From<SpawnCmd> for u8 {
     fn from(value: SpawnCmd) -> Self {
+        value.to_u8().unwrap()
+    }
+}
+
+#[repr(u8)]
+#[derive(FromPrimitive, ToPrimitive, Clone, Debug)]
+pub enum SpawnCasesCmd {
+    Unknow = 0,
+    ReadWrite,
+    WriteDeadLock,
+    InvalidFd,
+}
+impl From<u8> for SpawnCasesCmd {
+    fn from(value: u8) -> Self {
+        Self::from_u8(value).unwrap()
+    }
+}
+impl From<&str> for SpawnCasesCmd {
+    fn from(value: &str) -> Self {
+        value.parse::<u8>().unwrap().into()
+    }
+}
+impl From<SpawnCasesCmd> for u8 {
+    fn from(value: SpawnCasesCmd) -> Self {
         value.to_u8().unwrap()
     }
 }

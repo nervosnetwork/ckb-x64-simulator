@@ -61,7 +61,13 @@ pub extern "C" fn ckb_wait(pid: u64, code: *mut i8) -> c_int {
     if !get_cur_tx!().has_vm(&pid) {
         return 5; // WaitFailure
     }
-    let c = get_cur_tx_mut!().vm_mut_info(&pid).wait_exit();
+    let jh = get_cur_tx_mut!().vm_mut_info(&pid).wait_exit();
+
+    let c = if let Some(j) = jh {
+        j.join().unwrap()
+    } else {
+        0
+    };
     unsafe { *({ code }) = c };
     0
 }
@@ -173,6 +179,7 @@ pub extern "C" fn ckb_inherited_fds(fds: *mut u64, length: *mut usize) -> c_int 
     let len = out_fds.len().min(utils::to_usize(length));
 
     copy_fds(&out_fds[0..len], fds);
+    unsafe { *({ length }) = len };
     0
 }
 

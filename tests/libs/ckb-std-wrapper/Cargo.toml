@@ -7,5 +7,5 @@ edition = "2021"
 native-simulator = ["ckb-std/native-simulator"]
 
 [dependencies]
-ckb-std = { git = "https://github.com/joii2020/ckb-std.git", rev = "a4dfebc" }
-# ckb-std = { path = "../../../../ckb-std" }
+# ckb-std = { git = "https://github.com/joii2020/ckb-std.git", rev = "a4dfebc" }
+ckb-std = { path = "../../../../ckb-std" }

@@ -454,7 +454,6 @@ dependencies = [
 [[package]]
 name = "ckb-std"
 version = "0.16.0"
-source = "git+https://github.com/joii2020/ckb-std.git?rev=a4dfebc#a4dfebcb3136b6bde392e1d71ebe1156c5a4c9bf"
 dependencies = [
  "buddy-alloc",
  "cc",
@@ -1614,6 +1613,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f92a496fb766b417c996b9c5e57daf2f7ad3b0bebe1ccfca4856390e3d3bb67"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "spawn-cases"
+version = "0.1.0"
+dependencies = [
+ "ckb-std-wrapper",
+ "spawn_cmd",
+]
+
+[[package]]
+name = "spawn-cases-sim"
+version = "0.1.0"
+dependencies = [
+ "ckb-std-wrapper",
+ "spawn-cases",
 ]
 
 [[package]]

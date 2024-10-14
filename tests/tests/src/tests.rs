@@ -13,7 +13,7 @@ use ckb_testtool::{
 };
 use spawn_cmd::SpawnCmd;
 
-const MAX_CYCLES: u64 = 500_000_000_000;
+pub const MAX_CYCLES: u64 = 500_000_000_000;
 
 #[test]
 fn test_exec() {

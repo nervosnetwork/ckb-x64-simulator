@@ -107,13 +107,12 @@ impl VMInfo {
         self.join_handle = Some(j);
     }
 
-    pub fn wait_exit(&mut self) -> i8 {
+    pub fn wait_exit(&mut self) -> Option<JoinHandle<i8>> {
         self.event_notify.notify();
         self.event_wait.notify();
         self.wait_exit = true;
 
-        let join_handle = self.join_handle.take();
-        join_handle.unwrap().join().unwrap()
+        self.join_handle.take()
     }
 }
 
