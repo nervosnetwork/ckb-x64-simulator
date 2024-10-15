@@ -4,8 +4,8 @@ pub mod spawn;
 pub use spawn::*;
 
 mod global_data;
-mod utils;
 mod simulator_context;
+mod utils;
 
 use global_data::GlobalData;
 use simulator_context::{TxContext, VMInfo};

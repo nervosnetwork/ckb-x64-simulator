@@ -1,4 +1,4 @@
-use crate::simulator_context::TxContext;
+use crate::simulator_context::{TxContext, TxID, VmID};
 use std::{
     collections::HashMap,
     ffi::c_void,
@@ -10,45 +10,6 @@ lazy_static! {
     static ref GLOBAL_DATA: Pin<Box<Mutex<GlobalData>>> = Pin::new(Box::default());
 }
 static mut GLOBAL_DATA_PTR: *mut Mutex<GlobalData> = std::ptr::null_mut();
-
-#[derive(Default, PartialEq, Eq, Clone, Hash, Debug)]
-pub struct TxID(u64);
-impl From<u64> for TxID {
-    fn from(value: u64) -> Self {
-        Self(value)
-    }
-}
-impl From<TxID> for u64 {
-    fn from(value: TxID) -> Self {
-        value.0
-    }
-}
-impl TxID {
-    fn next(&mut self) -> Self {
-        self.0 += 1;
-        self.clone()
-    }
-}
-
-#[derive(Default, PartialEq, Eq, Clone, Hash, Debug)]
-pub struct VmID(u64);
-impl From<u64> for VmID {
-    fn from(value: u64) -> Self {
-        Self(value)
-    }
-}
-impl From<VmID> for u64 {
-    fn from(value: VmID) -> Self {
-        value.0
-    }
-}
-impl VmID {
-    pub fn next(&mut self) -> Self {
-        let id = self.clone();
-        self.0 += 1;
-        id
-    }
-}
 
 pub struct GlobalData {
     tx_ctx: HashMap<TxID, TxContext>,

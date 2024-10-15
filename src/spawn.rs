@@ -1,8 +1,8 @@
 use crate::{
     get_cur_tx, get_cur_tx_mut, get_cur_vm,
-    global_data::{GlobalData, VmID},
+    global_data::GlobalData,
+    simulator_context::{Fd, TxContext, VMInfo, VmID},
     utils,
-    simulator_context::{Fd, TxContext, VMInfo},
 };
 use std::os::raw::{c_int, c_void};
 
