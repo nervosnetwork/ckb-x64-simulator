@@ -1,7 +1,7 @@
 use crate::{
     get_vm,
-    global_data::{GlobalData, TxID, VmID},
-    simulator_context::{TxContext, VMInfo},
+    global_data::GlobalData,
+    simulator_context::{SimContext, SimID, VMInfo, VmID},
 };
 use std::{
     ffi::{c_int, c_void},
@@ -80,12 +80,12 @@ impl CkbNativeSimulator {
         pid: &VmID,
     ) -> JoinHandle<i8> {
         let args = to_vec_args(argc, argv as *const *const i8);
-        let tx_ctx_id = TxContext::ctx_id();
+        let tx_ctx_id = SimContext::ctx_id();
 
         let pid2 = pid.clone();
         std::thread::spawn(move || {
             VMInfo::set_ctx_id(pid2.clone());
-            TxContext::set_ctx_id(tx_ctx_id.clone());
+            SimContext::set_ctx_id(tx_ctx_id.clone());
 
             self.update_script_info(tx_ctx_id.clone(), pid2.clone());
             let rc = self.ckb_std_main(args);
@@ -98,7 +98,7 @@ impl CkbNativeSimulator {
         })
     }
 
-    pub fn update_script_info(&self, tx_ctx_id: TxID, vm_ctx_id: VmID) {
+    pub fn update_script_info(&self, tx_ctx_id: SimID, vm_ctx_id: VmID) {
         type SetScriptInfo<'a> = libloading::Symbol<
             'a,
             unsafe extern "C" fn(ptr: *const c_void, tx_ctx_id: u64, vm_ctx_id: u64),

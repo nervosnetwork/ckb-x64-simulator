@@ -1,4 +1,4 @@
-use crate::simulator_context::{TxContext, TxID, VmID};
+use crate::simulator_context::{SimContext, SimID};
 use std::{
     collections::HashMap,
     ffi::c_void,
@@ -12,14 +12,14 @@ lazy_static! {
 static mut GLOBAL_DATA_PTR: *mut Mutex<GlobalData> = std::ptr::null_mut();
 
 pub struct GlobalData {
-    tx_ctx: HashMap<TxID, TxContext>,
-    tx_ctx_id_count: TxID,
+    tx_ctx: HashMap<SimID, SimContext>,
+    tx_ctx_id_count: SimID,
 }
 impl Default for GlobalData {
     fn default() -> Self {
-        TxContext::set_ctx_id(0.into());
+        SimContext::set_ctx_id(0.into());
         Self {
-            tx_ctx: [(0.into(), TxContext::default())].into(),
+            tx_ctx: [(0.into(), SimContext::default())].into(),
             tx_ctx_id_count: 1.into(),
         }
     }
@@ -56,19 +56,19 @@ impl GlobalData {
         }
         let mut data = Self::locked();
         *data = Self::default();
-        TxContext::clean();
+        SimContext::clean();
     }
 
-    pub fn set_tx(&mut self, ctx: TxContext) -> TxID {
+    pub fn set_tx(&mut self, ctx: SimContext) -> SimID {
         self.tx_ctx.insert(self.tx_ctx_id_count.next(), ctx);
         self.tx_ctx_id_count.clone()
     }
-    pub fn get_tx(&self, id: &TxID) -> &TxContext {
+    pub fn get_tx(&self, id: &SimID) -> &SimContext {
         self.tx_ctx
             .get(id)
             .unwrap_or_else(|| panic!("unknow tx context: {:?}", id))
     }
-    pub fn get_tx_mut(&mut self, id: &TxID) -> &mut TxContext {
+    pub fn get_tx_mut(&mut self, id: &SimID) -> &mut SimContext {
         self.tx_ctx
             .get_mut(id)
             .unwrap_or_else(|| panic!("unknow mut tx context: {:?}", id))
@@ -85,7 +85,7 @@ macro_rules! get_tx {
 #[macro_export]
 macro_rules! get_cur_tx {
     () => {
-        GlobalData::locked().get_tx(&TxContext::ctx_id())
+        GlobalData::locked().get_tx(&SimContext::ctx_id())
     };
 }
 
@@ -99,7 +99,7 @@ macro_rules! get_tx_mut {
 #[macro_export]
 macro_rules! get_cur_tx_mut {
     () => {
-        GlobalData::locked().get_tx_mut(&TxContext::ctx_id())
+        GlobalData::locked().get_tx_mut(&SimContext::ctx_id())
     };
 }
 
@@ -114,7 +114,7 @@ macro_rules! get_vm {
 macro_rules! get_cur_vm {
     () => {
         GlobalData::locked()
-            .get_tx(&TxContext::ctx_id())
+            .get_tx(&SimContext::ctx_id())
             .vm_info(&VMInfo::ctx_id())
     };
 }
@@ -123,7 +123,7 @@ macro_rules! get_cur_vm {
 macro_rules! get_cur_vm_mut {
     () => {
         GlobalData::locked()
-            .get_tx_mut(&TxContext::ctx_id())
+            .get_tx_mut(&SimContext::ctx_id())
             .vm_mut_info(&VMInfo::ctx_id())
     };
 }

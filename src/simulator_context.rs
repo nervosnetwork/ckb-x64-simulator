@@ -6,7 +6,7 @@ use std::{
 };
 
 thread_local! {
-    static TX_CONTEXT_ID: RefCell<TxID> = RefCell::new(TxID::default());
+    static TX_CONTEXT_ID: RefCell<SimID> = RefCell::new(SimID::default());
     static VM_CONTEXT_ID: RefCell<VmID> = RefCell::new(VmID::default());
 }
 
@@ -115,7 +115,7 @@ impl VMInfo {
     }
 }
 
-pub struct TxContext {
+pub struct SimContext {
     fds_count: u64,
     vm_id_count: VmID,
 
@@ -124,7 +124,7 @@ pub struct TxContext {
     fds: HashMap<Fd, VmID>,
     bufs: HashMap<Fd, Vec<u8>>,
 }
-impl Default for TxContext {
+impl Default for SimContext {
     fn default() -> Self {
         VMInfo::set_ctx_id(0.into());
         Self {
@@ -136,11 +136,11 @@ impl Default for TxContext {
         }
     }
 }
-impl TxContext {
-    pub fn set_ctx_id(id: TxID) {
+impl SimContext {
+    pub fn set_ctx_id(id: SimID) {
         TX_CONTEXT_ID.with(|f| *f.borrow_mut() = id);
     }
-    pub fn ctx_id() -> TxID {
+    pub fn ctx_id() -> SimID {
         TX_CONTEXT_ID.with(|f| f.borrow().clone())
     }
     pub fn clean() {
@@ -339,18 +339,18 @@ impl Fd {
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Hash, Debug)]
-pub struct TxID(u64);
-impl From<u64> for TxID {
+pub struct SimID(u64);
+impl From<u64> for SimID {
     fn from(value: u64) -> Self {
         Self(value)
     }
 }
-impl From<TxID> for u64 {
-    fn from(value: TxID) -> Self {
+impl From<SimID> for u64 {
+    fn from(value: SimID) -> Self {
         value.0
     }
 }
-impl TxID {
+impl SimID {
     pub fn next(&mut self) -> Self {
         self.0 += 1;
         self.clone()

@@ -1,7 +1,7 @@
 use crate::{
     get_cur_tx, get_cur_tx_mut, get_cur_vm,
     global_data::GlobalData,
-    simulator_context::{Fd, TxContext, VMInfo, VmID},
+    simulator_context::{Fd, SimContext, VMInfo, VmID},
     utils,
 };
 use std::os::raw::{c_int, c_void};
@@ -262,7 +262,7 @@ impl CheckSpawn {
         }
 
         let g = GlobalData::locked();
-        let tx_ctx = g.get_tx(&TxContext::ctx_id());
+        let tx_ctx = g.get_tx(&SimContext::ctx_id());
         if !tx_ctx.has_fd(fd) {
             return Err(6); // CKB_INVALID_FD
         }

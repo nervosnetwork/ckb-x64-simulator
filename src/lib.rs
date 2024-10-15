@@ -8,7 +8,7 @@ mod simulator_context;
 mod utils;
 
 use global_data::GlobalData;
-use simulator_context::{TxContext, VMInfo};
+use simulator_context::{SimContext, VMInfo};
 
 #[macro_use]
 extern crate lazy_static;
@@ -119,8 +119,8 @@ pub extern "C" fn ckb_exec_cell(
         RunningType::DynamicLib => {
             use utils::CkbNativeSimulator;
 
-            let tx_ctx_id = GlobalData::locked().set_tx(simulator_context::TxContext::default());
-            TxContext::set_ctx_id(tx_ctx_id.clone());
+            let tx_ctx_id = GlobalData::locked().set_tx(simulator_context::SimContext::default());
+            SimContext::set_ctx_id(tx_ctx_id.clone());
 
             let sim = CkbNativeSimulator::new_by_hash(code_hash, hash_type, offset, length);
             let args = utils::to_vec_args(argc, argv as *const *const i8);
@@ -129,7 +129,7 @@ pub extern "C" fn ckb_exec_cell(
                 let vm_id = get_tx_mut!(&tx_ctx_id).new_vm(None, &[]);
 
                 VMInfo::set_ctx_id(vm_id.clone());
-                TxContext::set_ctx_id(tx_ctx_id.clone());
+                SimContext::set_ctx_id(tx_ctx_id.clone());
 
                 sim.update_script_info(tx_ctx_id.clone(), vm_id.clone());
 
@@ -459,7 +459,7 @@ pub extern "C" fn set_script_info(ptr: *const std::ffi::c_void, tx_ctx_id: u64, 
         GlobalData::clean();
     } else {
         GlobalData::set_ptr(ptr);
-        TxContext::set_ctx_id(tx_ctx_id.into());
+        SimContext::set_ctx_id(tx_ctx_id.into());
         VMInfo::set_ctx_id(vm_ctx_id.into());
     }
 }
