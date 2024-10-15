@@ -8,7 +8,7 @@ mod simulator_context;
 mod utils;
 
 use global_data::GlobalData;
-use simulator_context::{SimContext, VMInfo};
+use simulator_context::{ProcInfo, SimContext};
 
 #[macro_use]
 extern crate lazy_static;
@@ -126,15 +126,15 @@ pub extern "C" fn ckb_exec_cell(
             let args = utils::to_vec_args(argc, argv as *const *const i8);
 
             let t = std::thread::spawn(move || {
-                let vm_id = get_tx_mut!(&tx_ctx_id).new_vm(None, &[]);
+                let pid = get_tx_mut!(&tx_ctx_id).new_process(None, &[]);
 
-                VMInfo::set_ctx_id(vm_id.clone());
+                ProcInfo::set_ctx_id(pid.clone());
                 SimContext::set_ctx_id(tx_ctx_id.clone());
 
-                sim.update_script_info(tx_ctx_id.clone(), vm_id.clone());
+                sim.update_script_info(tx_ctx_id.clone(), pid.clone());
 
                 sim.ckb_std_main(args)
-                // get_cur_vm!().notify();
+                // get_cur_proc!().notify();
             });
 
             t.join().expect("exec dylib") as c_int
@@ -454,13 +454,13 @@ pub extern "C" fn ckb_dlopen2(
 }
 
 #[no_mangle]
-pub extern "C" fn set_script_info(ptr: *const std::ffi::c_void, tx_ctx_id: u64, vm_ctx_id: u64) {
-    if ptr.is_null() && tx_ctx_id == 0 && vm_ctx_id == 0 {
+pub extern "C" fn set_script_info(ptr: *const std::ffi::c_void, tx_ctx_id: u64, proc_ctx_id: u64) {
+    if ptr.is_null() && tx_ctx_id == 0 && proc_ctx_id == 0 {
         GlobalData::clean();
     } else {
         GlobalData::set_ptr(ptr);
         SimContext::set_ctx_id(tx_ctx_id.into());
-        VMInfo::set_ctx_id(vm_ctx_id.into());
+        ProcInfo::set_ctx_id(proc_ctx_id.into());
     }
 }
 

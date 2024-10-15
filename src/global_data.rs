@@ -1,4 +1,4 @@
-use crate::simulator_context::{SimContext, SimID};
+use crate::{simulator_context::SimContext, utils::SimID};
 use std::{
     collections::HashMap,
     ffi::c_void,
@@ -104,26 +104,26 @@ macro_rules! get_cur_tx_mut {
 }
 
 #[macro_export]
-macro_rules! get_vm {
-    ($txid: expr, $vm_id: expr) => {
-        GlobalData::locked().get_tx(&$txid).vm_info(&$vm_id)
+macro_rules! get_proc {
+    ($txid: expr, $pid: expr) => {
+        GlobalData::locked().get_tx(&$txid).proc_info(&$pid)
     };
 }
 
 #[macro_export]
-macro_rules! get_cur_vm {
+macro_rules! get_cur_proc {
     () => {
         GlobalData::locked()
             .get_tx(&SimContext::ctx_id())
-            .vm_info(&VMInfo::ctx_id())
+            .proc_info(&ProcInfo::ctx_id())
     };
 }
 
 #[macro_export]
-macro_rules! get_cur_vm_mut {
+macro_rules! get_cur_proc_mut {
     () => {
         GlobalData::locked()
             .get_tx_mut(&SimContext::ctx_id())
-            .vm_mut_info(&VMInfo::ctx_id())
+            .proc_mut_info(&ProcInfo::ctx_id())
     };
 }

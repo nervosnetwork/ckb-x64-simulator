@@ -1,8 +1,9 @@
 use crate::{
-    get_cur_tx, get_cur_tx_mut, get_cur_vm,
+    get_cur_proc, get_cur_tx, get_cur_tx_mut,
     global_data::GlobalData,
-    simulator_context::{Fd, SimContext, VMInfo, VmID},
+    simulator_context::{ProcInfo, SimContext},
     utils,
+    utils::{Fd, ProcID},
 };
 use std::os::raw::{c_int, c_void};
 
@@ -39,16 +40,16 @@ pub extern "C" fn ckb_spawn_cell(
             return err;
         }
     }
-    if get_cur_tx!().max_vms_spawned() {
-        return 8; //MAX_VMS_SPAWNED
+    if get_cur_tx!().max_proc_spawned() {
+        return 8; // MAX_VMS_SPAWNED
     }
 
     let ckb_sim = utils::CkbNativeSimulator::new_by_hash(code_hash, hash_type, offset, length);
-    let new_id = new_vm_id(&inherited_fds);
+    let new_id = new_proc_id(&inherited_fds);
     let jh = ckb_sim.ckb_std_main_async(argc, argv, &new_id);
 
-    get_cur_tx_mut!().vm_mut_info(&new_id).set_join(jh);
-    let event = get_cur_vm!().get_event_by_pid(&new_id);
+    get_cur_tx_mut!().proc_mut_info(&new_id).set_join(jh);
+    let event = get_cur_proc!().get_event_by_pid(&new_id);
     event.wait();
 
     unsafe { *({ pid }) = new_id.into() };
@@ -57,11 +58,11 @@ pub extern "C" fn ckb_spawn_cell(
 
 #[no_mangle]
 pub extern "C" fn ckb_wait(pid: u64, code: *mut i8) -> c_int {
-    let pid: VmID = pid.into();
-    if !get_cur_tx!().has_vm(&pid) {
+    let pid: ProcID = pid.into();
+    if !get_cur_tx!().has_proc(&pid) {
         return 5; // WaitFailure
     }
-    let jh = get_cur_tx_mut!().vm_mut_info(&pid).wait_exit();
+    let jh = get_cur_tx_mut!().proc_mut_info(&pid).wait_exit();
 
     let c = if let Some(j) = jh {
         j.join().unwrap()
@@ -74,7 +75,7 @@ pub extern "C" fn ckb_wait(pid: u64, code: *mut i8) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn ckb_process_id() -> u64 {
-    VMInfo::ctx_id().into()
+    ProcInfo::ctx_id().into()
 }
 
 #[no_mangle]
@@ -99,8 +100,8 @@ pub extern "C" fn ckb_read(fd: u64, buf: *mut c_void, length: *mut usize) -> c_i
 
     let has_data = get_cur_tx!().has_data(&fd);
     if !has_data {
-        get_cur_vm!().notify(Some(&fd));
-        let event = get_cur_vm!().wait(Some(&fd));
+        get_cur_proc!().notify(Some(&fd));
+        let event = get_cur_proc!().wait(Some(&fd));
         event.wait();
     }
 
@@ -126,8 +127,8 @@ pub extern "C" fn ckb_read(fd: u64, buf: *mut c_void, length: *mut usize) -> c_i
         }
 
         if cache_size == 0 {
-            get_cur_vm!().notify(Some(&fd));
-            let event = get_cur_vm!().wait(Some(&fd));
+            get_cur_proc!().notify(Some(&fd));
+            let event = get_cur_proc!().wait(Some(&fd));
             event.wait();
             break;
         }
@@ -148,8 +149,8 @@ pub extern "C" fn ckb_write(fd: u64, buf: *const c_void, length: *mut usize) -> 
     let has_data = get_cur_tx_mut!().has_data(&fd);
 
     if has_data {
-        get_cur_vm!().notify(Some(&fd));
-        let event = get_cur_vm!().wait(Some(&fd));
+        get_cur_proc!().notify(Some(&fd));
+        let event = get_cur_proc!().wait(Some(&fd));
         event.wait();
     }
 
@@ -165,8 +166,8 @@ pub extern "C" fn ckb_write(fd: u64, buf: *const c_void, length: *mut usize) -> 
     get_cur_tx_mut!().write_data(&fd, &buf);
 
     // if !has_data {
-    get_cur_vm!().notify(Some(&fd));
-    let event = get_cur_vm!().wait(Some(&fd));
+    get_cur_proc!().notify(Some(&fd));
+    let event = get_cur_proc!().wait(Some(&fd));
     event.wait();
     // }
 
@@ -175,7 +176,7 @@ pub extern "C" fn ckb_write(fd: u64, buf: *const c_void, length: *mut usize) -> 
 
 #[no_mangle]
 pub extern "C" fn ckb_inherited_fds(fds: *mut u64, length: *mut usize) -> c_int {
-    let out_fds = get_cur_tx!().vm_info(&VMInfo::ctx_id()).inherited_fds();
+    let out_fds = get_cur_tx!().proc_info(&ProcInfo::ctx_id()).inherited_fds();
     let len = out_fds.len().min(utils::to_usize(length));
 
     copy_fds(&out_fds[0..len], fds);
@@ -206,9 +207,9 @@ pub extern "C" fn ckb_load_block_extension(
     panic!("unsupport");
 }
 
-fn new_vm_id(inherited_fds: &[Fd]) -> VmID {
-    let cur_id = VMInfo::ctx_id();
-    let new_id = get_cur_tx_mut!().new_vm(Some(cur_id.clone()), inherited_fds);
+fn new_proc_id(inherited_fds: &[Fd]) -> ProcID {
+    let cur_id = ProcInfo::ctx_id();
+    let new_id = get_cur_tx_mut!().new_process(Some(cur_id.clone()), inherited_fds);
 
     inherited_fds.iter().all(|fd| {
         get_cur_tx_mut!().move_pipe(fd, new_id.clone());

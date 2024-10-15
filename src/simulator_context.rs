@@ -1,19 +1,15 @@
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    sync::{Arc, Condvar, Mutex},
-    thread::JoinHandle,
-};
+use crate::utils::{Event, Fd, ProcID, SimID};
+use std::{cell::RefCell, collections::HashMap, thread::JoinHandle};
 
 thread_local! {
     static TX_CONTEXT_ID: RefCell<SimID> = RefCell::new(SimID::default());
-    static VM_CONTEXT_ID: RefCell<VmID> = RefCell::new(VmID::default());
+    static PROC_CONTEXT_ID: RefCell<ProcID> = RefCell::new(ProcID::default());
 }
 
-const MAX_VMS_COUNT: u64 = 16;
+const MAX_PROCESSES_COUNT: u64 = 16;
 
 pub struct Child {
-    id: VmID,
+    id: ProcID,
     inherited_fds: Vec<Fd>,
 
     event_wait: Event,
@@ -21,24 +17,24 @@ pub struct Child {
 }
 
 #[derive(Default)]
-pub struct VMInfo {
-    id: VmID,
+pub struct ProcInfo {
+    id: ProcID,
 
     inherited_fds: Vec<Fd>,
     event_wait: Event,
     event_notify: Event,
 
-    children: HashMap<VmID, Child>, // wait, notify
+    children: HashMap<ProcID, Child>, // wait, notify
 
     join_handle: Option<JoinHandle<i8>>,
     wait_exit: bool,
 }
-impl VMInfo {
-    pub fn set_ctx_id(id: VmID) {
-        VM_CONTEXT_ID.with(|f| *f.borrow_mut() = id);
+impl ProcInfo {
+    pub fn set_ctx_id(id: ProcID) {
+        PROC_CONTEXT_ID.with(|f| *f.borrow_mut() = id);
     }
-    pub fn ctx_id() -> VmID {
-        VM_CONTEXT_ID.with(|f| f.borrow().clone())
+    pub fn ctx_id() -> ProcID {
+        PROC_CONTEXT_ID.with(|f| f.borrow().clone())
     }
 
     pub fn inherited_fds(&self) -> Vec<Fd> {
@@ -57,7 +53,7 @@ impl VMInfo {
         }
     }
 
-    fn get_child_by_id(&self, id: &VmID) -> Option<&Child> {
+    fn get_child_by_id(&self, id: &ProcID) -> Option<&Child> {
         if let Some((_, c)) = self.children.iter().find(|(_, child)| &child.id == id) {
             Some(c)
         } else {
@@ -92,7 +88,7 @@ impl VMInfo {
         }
     }
 
-    pub fn get_event_by_pid(&self, id: &VmID) -> Event {
+    pub fn get_event_by_pid(&self, id: &ProcID) -> Event {
         if id == &self.id {
             self.event_wait.clone()
         } else if let Some(c) = self.get_child_by_id(id) {
@@ -117,20 +113,20 @@ impl VMInfo {
 
 pub struct SimContext {
     fds_count: u64,
-    vm_id_count: VmID,
+    proc_id_count: ProcID,
 
-    vm_info: HashMap<VmID, VMInfo>,
+    proc_info: HashMap<ProcID, ProcInfo>,
 
-    fds: HashMap<Fd, VmID>,
+    fds: HashMap<Fd, ProcID>,
     bufs: HashMap<Fd, Vec<u8>>,
 }
 impl Default for SimContext {
     fn default() -> Self {
-        VMInfo::set_ctx_id(0.into());
+        ProcInfo::set_ctx_id(0.into());
         Self {
             fds_count: 2,
-            vm_id_count: 1.into(),
-            vm_info: [(0.into(), VMInfo::default())].into(),
+            proc_id_count: 1.into(),
+            proc_info: [(0.into(), ProcInfo::default())].into(),
             fds: Default::default(),
             bufs: Default::default(),
         }
@@ -145,14 +141,14 @@ impl SimContext {
     }
     pub fn clean() {
         TX_CONTEXT_ID.with(|f| *f.borrow_mut() = 0.into());
-        VM_CONTEXT_ID.with(|f| *f.borrow_mut() = 0.into());
+        PROC_CONTEXT_ID.with(|f| *f.borrow_mut() = 0.into());
     }
 
-    pub fn new_vm(&mut self, parent_id: Option<VmID>, fds: &[Fd]) -> VmID {
-        let id = self.vm_id_count.next();
+    pub fn new_process(&mut self, parent_id: Option<ProcID>, fds: &[Fd]) -> ProcID {
+        let id = self.proc_id_count.next();
         let (e_wait, e_notify) = if parent_id.is_some() {
             let p = self
-                .vm_info
+                .proc_info
                 .get_mut(parent_id.as_ref().unwrap())
                 .unwrap_or_else(|| panic!("unknow pid: {:?}", parent_id));
             let e_wait = Event::default();
@@ -173,7 +169,7 @@ impl SimContext {
             (Event::default(), Event::default())
         };
 
-        let p = VMInfo {
+        let proc = ProcInfo {
             id: id.clone(),
             inherited_fds: fds.to_vec(),
             event_notify: e_wait,
@@ -183,29 +179,29 @@ impl SimContext {
             wait_exit: false,
         };
 
-        self.vm_info.insert(id.clone(), p);
+        self.proc_info.insert(id.clone(), proc);
 
         id
     }
-    pub fn vm_info(&self, id: &VmID) -> &VMInfo {
-        self.vm_info
+    pub fn proc_info(&self, id: &ProcID) -> &ProcInfo {
+        self.proc_info
             .get(id)
-            .unwrap_or_else(|| panic!("unknow vm id: {:?}", id))
+            .unwrap_or_else(|| panic!("unknow process id: {:?}", id))
     }
-    pub fn vm_mut_info(&mut self, id: &VmID) -> &mut VMInfo {
-        self.vm_info
+    pub fn proc_mut_info(&mut self, id: &ProcID) -> &mut ProcInfo {
+        self.proc_info
             .get_mut(id)
-            .unwrap_or_else(|| panic!("unknow vm id: {:?}", id))
+            .unwrap_or_else(|| panic!("unknow process id: {:?}", id))
     }
-    pub fn max_vms_spawned(&self) -> bool {
-        u64::from(self.vm_id_count.clone()) > MAX_VMS_COUNT
+    pub fn max_proc_spawned(&self) -> bool {
+        u64::from(self.proc_id_count.clone()) > MAX_PROCESSES_COUNT
     }
-    pub fn has_vm(&self, id: &VmID) -> bool {
-        self.vm_info.contains_key(id)
+    pub fn has_proc(&self, id: &ProcID) -> bool {
+        self.proc_info.contains_key(id)
     }
 
     pub fn new_pipe(&mut self) -> (Fd, Fd) {
-        let pid = VMInfo::ctx_id();
+        let pid = ProcInfo::ctx_id();
         let fds = Fd::create(self.fds_count);
 
         self.fds.insert(fds.0.clone(), pid.clone());
@@ -224,14 +220,14 @@ impl SimContext {
     pub fn len_pipe(&self) -> usize {
         self.fds.len()
     }
-    pub fn move_pipe(&mut self, fd: &Fd, pid: VmID) {
+    pub fn move_pipe(&mut self, fd: &Fd, pid: ProcID) {
         let f = self
             .fds
             .get_mut(fd)
             .unwrap_or_else(|| panic!("unknow fd: {:?}", fd));
         *f = pid;
     }
-    pub fn close_all(&mut self, id: &VmID) {
+    pub fn close_all(&mut self, id: &ProcID) {
         let keys_to_rm: Vec<Fd> = self
             .fds
             .iter()
@@ -245,7 +241,7 @@ impl SimContext {
 
     pub fn has_fd(&self, fd: &Fd) -> bool {
         if let Some(pid) = self.fds.get(fd) {
-            &VMInfo::ctx_id() == pid
+            &ProcInfo::ctx_id() == pid
         } else {
             false
         }
@@ -278,101 +274,5 @@ impl SimContext {
     }
     pub fn has_data(&self, fd: &Fd) -> bool {
         self.bufs.contains_key(fd) || self.bufs.contains_key(&fd.other_fd())
-    }
-}
-
-#[derive(Default, Debug)]
-pub struct Event {
-    data: Arc<(Mutex<bool>, Condvar)>,
-}
-impl Clone for Event {
-    fn clone(&self) -> Self {
-        Self {
-            data: Arc::clone(&self.data),
-        }
-    }
-}
-impl Event {
-    pub fn notify(&self) {
-        let (lock, cvar) = &*self.data;
-        let mut started = lock.lock().unwrap();
-        *started = true;
-        cvar.notify_one();
-    }
-
-    pub fn wait(&self) {
-        let (lock, cvar) = &*self.data;
-        let mut started = lock.lock().unwrap();
-
-        loop {
-            if *started {
-                *started = false;
-                break;
-            }
-            started = cvar.wait(started).unwrap();
-        }
-    }
-}
-
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct Fd(pub u64);
-impl From<u64> for Fd {
-    fn from(value: u64) -> Self {
-        Self(value)
-    }
-}
-impl From<Fd> for u64 {
-    fn from(value: Fd) -> Self {
-        value.0
-    }
-}
-impl Fd {
-    pub fn create(slot: u64) -> (Fd, Fd, u64) {
-        (Fd(slot), Fd(slot + 1), slot + 2)
-    }
-    pub fn other_fd(&self) -> Fd {
-        Fd(self.0 ^ 0x1)
-    }
-    pub fn is_read(&self) -> bool {
-        self.0 % 2 == 0
-    }
-}
-
-#[derive(Default, PartialEq, Eq, Clone, Hash, Debug)]
-pub struct SimID(u64);
-impl From<u64> for SimID {
-    fn from(value: u64) -> Self {
-        Self(value)
-    }
-}
-impl From<SimID> for u64 {
-    fn from(value: SimID) -> Self {
-        value.0
-    }
-}
-impl SimID {
-    pub fn next(&mut self) -> Self {
-        self.0 += 1;
-        self.clone()
-    }
-}
-
-#[derive(Default, PartialEq, Eq, Clone, Hash, Debug)]
-pub struct VmID(u64);
-impl From<u64> for VmID {
-    fn from(value: u64) -> Self {
-        Self(value)
-    }
-}
-impl From<VmID> for u64 {
-    fn from(value: VmID) -> Self {
-        value.0
-    }
-}
-impl VmID {
-    pub fn next(&mut self) -> Self {
-        let id = self.clone();
-        self.0 += 1;
-        id
     }
 }

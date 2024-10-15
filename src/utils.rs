@@ -1,11 +1,12 @@
 use crate::{
-    get_vm,
+    get_proc,
     global_data::GlobalData,
-    simulator_context::{SimContext, SimID, VMInfo, VmID},
+    simulator_context::{ProcInfo, SimContext},
 };
 use std::{
     ffi::{c_int, c_void},
     path::PathBuf,
+    sync::{Arc, Condvar, Mutex},
     thread::JoinHandle,
 };
 
@@ -77,14 +78,14 @@ impl CkbNativeSimulator {
         self,
         argc: i32,
         argv: *const *const u8,
-        pid: &VmID,
+        pid: &ProcID,
     ) -> JoinHandle<i8> {
         let args = to_vec_args(argc, argv as *const *const i8);
         let tx_ctx_id = SimContext::ctx_id();
 
         let pid2 = pid.clone();
         std::thread::spawn(move || {
-            VMInfo::set_ctx_id(pid2.clone());
+            ProcInfo::set_ctx_id(pid2.clone());
             SimContext::set_ctx_id(tx_ctx_id.clone());
 
             self.update_script_info(tx_ctx_id.clone(), pid2.clone());
@@ -93,15 +94,15 @@ impl CkbNativeSimulator {
             // close all fd before exit
             crate::get_cur_tx_mut!().close_all(&pid2);
 
-            get_vm!(&tx_ctx_id, &pid2).notify(None);
+            get_proc!(&tx_ctx_id, &pid2).notify(None);
             rc
         })
     }
 
-    pub fn update_script_info(&self, tx_ctx_id: SimID, vm_ctx_id: VmID) {
+    pub fn update_script_info(&self, tx_ctx_id: SimID, pid: ProcID) {
         type SetScriptInfo<'a> = libloading::Symbol<
             'a,
-            unsafe extern "C" fn(ptr: *const c_void, tx_ctx_id: u64, vm_ctx_id: u64),
+            unsafe extern "C" fn(ptr: *const c_void, tx_ctx_id: u64, pid: u64),
         >;
 
         unsafe {
@@ -109,7 +110,7 @@ impl CkbNativeSimulator {
                 .lib
                 .get(b"__set_script_info")
                 .expect("load function : __update_spawn_info");
-            func(GlobalData::get_ptr(), tx_ctx_id.into(), vm_ctx_id.into())
+            func(GlobalData::get_ptr(), tx_ctx_id.into(), pid.into())
         }
     }
 }
@@ -140,4 +141,100 @@ pub fn to_usize(ptr: *mut usize) -> usize {
 
 pub fn set_usize(ptr: *mut usize, v: usize) {
     unsafe { *ptr = v }
+}
+
+#[derive(Default, Debug)]
+pub struct Event {
+    data: Arc<(Mutex<bool>, Condvar)>,
+}
+impl Clone for Event {
+    fn clone(&self) -> Self {
+        Self {
+            data: Arc::clone(&self.data),
+        }
+    }
+}
+impl Event {
+    pub fn notify(&self) {
+        let (lock, cvar) = &*self.data;
+        let mut started = lock.lock().unwrap();
+        *started = true;
+        cvar.notify_one();
+    }
+
+    pub fn wait(&self) {
+        let (lock, cvar) = &*self.data;
+        let mut started = lock.lock().unwrap();
+
+        loop {
+            if *started {
+                *started = false;
+                break;
+            }
+            started = cvar.wait(started).unwrap();
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub struct Fd(pub u64);
+impl From<u64> for Fd {
+    fn from(value: u64) -> Self {
+        Self(value)
+    }
+}
+impl From<Fd> for u64 {
+    fn from(value: Fd) -> Self {
+        value.0
+    }
+}
+impl Fd {
+    pub fn create(slot: u64) -> (Fd, Fd, u64) {
+        (Fd(slot), Fd(slot + 1), slot + 2)
+    }
+    pub fn other_fd(&self) -> Fd {
+        Fd(self.0 ^ 0x1)
+    }
+    pub fn is_read(&self) -> bool {
+        self.0 % 2 == 0
+    }
+}
+
+#[derive(Default, PartialEq, Eq, Clone, Hash, Debug)]
+pub struct SimID(u64);
+impl From<u64> for SimID {
+    fn from(value: u64) -> Self {
+        Self(value)
+    }
+}
+impl From<SimID> for u64 {
+    fn from(value: SimID) -> Self {
+        value.0
+    }
+}
+impl SimID {
+    pub fn next(&mut self) -> Self {
+        self.0 += 1;
+        self.clone()
+    }
+}
+
+#[derive(Default, PartialEq, Eq, Clone, Hash, Debug)]
+pub struct ProcID(u64);
+impl From<u64> for ProcID {
+    fn from(value: u64) -> Self {
+        Self(value)
+    }
+}
+impl From<ProcID> for u64 {
+    fn from(value: ProcID) -> Self {
+        value.0
+    }
+}
+impl ProcID {
+    pub fn next(&mut self) -> Self {
+        let id = self.clone();
+        self.0 += 1;
+        id
+    }
 }
