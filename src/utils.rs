@@ -1,7 +1,7 @@
 use crate::{
     get_vm,
     global_data::{GlobalData, TxID, VmID},
-    vm_info::{TxContext, VMInfo},
+    simulator_context::{TxContext, VMInfo},
 };
 use std::{
     ffi::{c_int, c_void},

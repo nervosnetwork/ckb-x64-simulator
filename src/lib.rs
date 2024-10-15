@@ -5,10 +5,10 @@ pub use spawn::*;
 
 mod global_data;
 mod utils;
-mod vm_info;
+mod simulator_context;
 
 use global_data::GlobalData;
-use vm_info::{TxContext, VMInfo};
+use simulator_context::{TxContext, VMInfo};
 
 #[macro_use]
 extern crate lazy_static;
@@ -119,7 +119,7 @@ pub extern "C" fn ckb_exec_cell(
         RunningType::DynamicLib => {
             use utils::CkbNativeSimulator;
 
-            let tx_ctx_id = GlobalData::locked().set_tx(vm_info::TxContext::default());
+            let tx_ctx_id = GlobalData::locked().set_tx(simulator_context::TxContext::default());
             TxContext::set_ctx_id(tx_ctx_id.clone());
 
             let sim = CkbNativeSimulator::new_by_hash(code_hash, hash_type, offset, length);

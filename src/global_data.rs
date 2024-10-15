@@ -1,4 +1,4 @@
-use crate::vm_info::TxContext;
+use crate::simulator_context::TxContext;
 use std::{
     collections::HashMap,
     ffi::c_void,
