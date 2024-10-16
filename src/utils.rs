@@ -1,13 +1,8 @@
-use crate::{
-    get_proc,
-    global_data::GlobalData,
-    simulator_context::{ProcInfo, SimContext},
-};
+use crate::global_data::GlobalData;
 use std::{
     ffi::{c_int, c_void},
     path::PathBuf,
     sync::{Arc, Condvar, Mutex},
-    thread::JoinHandle,
 };
 
 pub fn get_simulator_path(
@@ -74,31 +69,6 @@ impl CkbNativeSimulator {
         }
     }
 
-    pub fn ckb_std_main_async(
-        self,
-        argc: i32,
-        argv: *const *const u8,
-        pid: &ProcID,
-    ) -> JoinHandle<i8> {
-        let args = to_vec_args(argc, argv as *const *const i8);
-        let tx_ctx_id = SimContext::ctx_id();
-
-        let pid2 = pid.clone();
-        std::thread::spawn(move || {
-            ProcInfo::set_ctx_id(pid2.clone());
-            SimContext::set_ctx_id(tx_ctx_id.clone());
-
-            self.update_script_info(tx_ctx_id.clone(), pid2.clone());
-            let rc = self.ckb_std_main(args);
-
-            // close all fd before exit
-            crate::get_cur_tx_mut!().close_all(&pid2);
-
-            get_proc!(&tx_ctx_id, &pid2).notify(None);
-            rc
-        })
-    }
-
     pub fn update_script_info(&self, tx_ctx_id: SimID, pid: ProcID) {
         type SetScriptInfo<'a> = libloading::Symbol<
             'a,
@@ -139,10 +109,6 @@ pub fn to_usize(ptr: *mut usize) -> usize {
     unsafe { *ptr }
 }
 
-pub fn set_usize(ptr: *mut usize, v: usize) {
-    unsafe { *ptr = v }
-}
-
 #[derive(Default, Debug)]
 pub struct Event {
     data: Arc<(Mutex<bool>, Condvar)>,
@@ -176,7 +142,7 @@ impl Event {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Fd(pub u64);
 impl From<u64> for Fd {
     fn from(value: u64) -> Self {
@@ -186,6 +152,11 @@ impl From<u64> for Fd {
 impl From<Fd> for u64 {
     fn from(value: Fd) -> Self {
         value.0
+    }
+}
+impl std::fmt::Debug for Fd {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "FD:{}", self.0)
     }
 }
 impl Fd {
@@ -200,7 +171,7 @@ impl Fd {
     }
 }
 
-#[derive(Default, PartialEq, Eq, Clone, Hash, Debug)]
+#[derive(Default, PartialEq, Eq, Clone, Hash)]
 pub struct SimID(u64);
 impl From<u64> for SimID {
     fn from(value: u64) -> Self {
@@ -212,6 +183,11 @@ impl From<SimID> for u64 {
         value.0
     }
 }
+impl std::fmt::Debug for SimID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SID:{}", self.0)
+    }
+}
 impl SimID {
     pub fn next(&mut self) -> Self {
         self.0 += 1;
@@ -219,7 +195,7 @@ impl SimID {
     }
 }
 
-#[derive(Default, PartialEq, Eq, Clone, Hash, Debug)]
+#[derive(Default, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub struct ProcID(u64);
 impl From<u64> for ProcID {
     fn from(value: u64) -> Self {
@@ -229,6 +205,11 @@ impl From<u64> for ProcID {
 impl From<ProcID> for u64 {
     fn from(value: ProcID) -> Self {
         value.0
+    }
+}
+impl std::fmt::Debug for ProcID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PID:{}", self.0)
     }
 }
 impl ProcID {

@@ -17,7 +17,7 @@ pub struct GlobalData {
 }
 impl Default for GlobalData {
     fn default() -> Self {
-        SimContext::set_ctx_id(0.into());
+        SimContext::update_ctx_id(0.into(), None);
         Self {
             tx_ctx: [(0.into(), SimContext::default())].into(),
             tx_ctx_id_count: 1.into(),
@@ -76,13 +76,6 @@ impl GlobalData {
 }
 
 #[macro_export]
-macro_rules! get_tx {
-    ($txid:expr) => {
-        GlobalData::locked().get_tx(&$txid)
-    };
-}
-
-#[macro_export]
 macro_rules! get_cur_tx {
     () => {
         GlobalData::locked().get_tx(&SimContext::ctx_id())
@@ -90,40 +83,8 @@ macro_rules! get_cur_tx {
 }
 
 #[macro_export]
-macro_rules! get_tx_mut {
-    ($txid:expr) => {
-        GlobalData::locked().get_tx_mut(&$txid)
-    };
-}
-
-#[macro_export]
 macro_rules! get_cur_tx_mut {
     () => {
         GlobalData::locked().get_tx_mut(&SimContext::ctx_id())
-    };
-}
-
-#[macro_export]
-macro_rules! get_proc {
-    ($txid: expr, $pid: expr) => {
-        GlobalData::locked().get_tx(&$txid).proc_info(&$pid)
-    };
-}
-
-#[macro_export]
-macro_rules! get_cur_proc {
-    () => {
-        GlobalData::locked()
-            .get_tx(&SimContext::ctx_id())
-            .proc_info(&ProcInfo::ctx_id())
-    };
-}
-
-#[macro_export]
-macro_rules! get_cur_proc_mut {
-    () => {
-        GlobalData::locked()
-            .get_tx_mut(&SimContext::ctx_id())
-            .proc_mut_info(&ProcInfo::ctx_id())
     };
 }

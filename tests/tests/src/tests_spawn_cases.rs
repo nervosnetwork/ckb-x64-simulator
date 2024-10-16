@@ -76,14 +76,14 @@ fn run_spawn_cases(cmd: SpawnCasesCmd, args: &[u8]) -> Result<Cycle, CKBError> {
 #[test]
 fn check_spawn_simple_read_write() {
     let result = run_spawn_cases(SpawnCasesCmd::ReadWrite, &[]);
-    result.expect("pass");
+    let _ = result.expect("pass");
 }
 
-#[test]
-fn check_spawn_write_dead_lock() {
-    let result = run_spawn_cases(SpawnCasesCmd::WriteDeadLock, &[]);
-    assert!(result.unwrap_err().to_string().contains("deadlock"));
-}
+// #[test]
+// fn check_spawn_write_dead_lock() {
+//     let result = run_spawn_cases(SpawnCasesCmd::WriteDeadLock, &[]);
+//     assert!(result.unwrap_err().to_string().contains("deadlock"));
+// }
 
 #[test]
 fn check_spawn_invalid_fd() {

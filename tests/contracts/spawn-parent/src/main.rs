@@ -125,8 +125,10 @@ fn spawn_base(args: SpawnArgs) -> i8 {
     assert_eq!(syscalls::process_id(), 0);
 
     let rr = syscalls::close(pid);
-    debug!("-A-  -- rr: {:?}", rr);
+    assert_eq!(rr.unwrap_err(), SysError::InvalidFd);
 
+    let code = syscalls::wait(pid).unwrap();
+    assert_eq!(code, 0);
     0
 }
 

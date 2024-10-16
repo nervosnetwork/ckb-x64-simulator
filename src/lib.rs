@@ -8,7 +8,7 @@ mod simulator_context;
 mod utils;
 
 use global_data::GlobalData;
-use simulator_context::{ProcInfo, SimContext};
+use simulator_context::SimContext;
 
 #[macro_use]
 extern crate lazy_static;
@@ -120,24 +120,21 @@ pub extern "C" fn ckb_exec_cell(
             use utils::CkbNativeSimulator;
 
             let tx_ctx_id = GlobalData::locked().set_tx(simulator_context::SimContext::default());
-            SimContext::set_ctx_id(tx_ctx_id.clone());
+            SimContext::update_ctx_id(tx_ctx_id.clone(), None);
 
             let sim = CkbNativeSimulator::new_by_hash(code_hash, hash_type, offset, length);
             let args = utils::to_vec_args(argc, argv as *const *const i8);
 
-            let t = std::thread::spawn(move || {
-                let pid = get_tx_mut!(&tx_ctx_id).new_process(None, &[]);
-
-                ProcInfo::set_ctx_id(pid.clone());
-                SimContext::set_ctx_id(tx_ctx_id.clone());
-
-                sim.update_script_info(tx_ctx_id.clone(), pid.clone());
-
-                sim.ckb_std_main(args)
-                // get_cur_proc!().notify();
-            });
-
-            t.join().expect("exec dylib") as c_int
+            let join_handle = {
+                let mut global_data = GlobalData::locked();
+                let sim_ctx = global_data.get_tx_mut(&tx_ctx_id);
+                let child_pid: utils::ProcID = sim_ctx.start_process(&[], move |sim_id, pid| {
+                    sim.update_script_info(sim_id, pid);
+                    sim.ckb_std_main(args)
+                });
+                sim_ctx.exit(&child_pid).unwrap()
+            };
+            join_handle.join().expect("exec dylib") as c_int
         }
     }
 }
@@ -171,7 +168,8 @@ pub extern "C" fn ckb_load_script(ptr: *mut c_void, len: *mut u64, offset: u64) 
 #[no_mangle]
 pub extern "C" fn ckb_debug(s: *const c_char) {
     let message = utils::to_c_str(s).to_str().expect("UTF8 error!");
-    println!("Debug message: {}", message);
+    // println!("Debug message: {}", message);
+    println!("[contract debug] {}", message);
 }
 
 #[no_mangle]
@@ -459,8 +457,7 @@ pub extern "C" fn set_script_info(ptr: *const std::ffi::c_void, tx_ctx_id: u64, 
         GlobalData::clean();
     } else {
         GlobalData::set_ptr(ptr);
-        SimContext::set_ctx_id(tx_ctx_id.into());
-        ProcInfo::set_ctx_id(proc_ctx_id.into());
+        SimContext::update_ctx_id(tx_ctx_id.into(), Some(proc_ctx_id.into()));
     }
 }
 

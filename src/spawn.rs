@@ -1,7 +1,7 @@
 use crate::{
-    get_cur_proc, get_cur_tx, get_cur_tx_mut,
+    get_cur_tx, get_cur_tx_mut,
     global_data::GlobalData,
-    simulator_context::{ProcInfo, SimContext},
+    simulator_context::SimContext,
     utils,
     utils::{Fd, ProcID},
 };
@@ -45,11 +45,13 @@ pub extern "C" fn ckb_spawn_cell(
     }
 
     let ckb_sim = utils::CkbNativeSimulator::new_by_hash(code_hash, hash_type, offset, length);
-    let new_id = new_proc_id(&inherited_fds);
-    let jh = ckb_sim.ckb_std_main_async(argc, argv, &new_id);
+    let args = utils::to_vec_args(argc, argv as *const *const i8);
+    let new_id = get_cur_tx_mut!().start_process(&inherited_fds, move |sim_id, pid| {
+        ckb_sim.update_script_info(sim_id, pid);
+        ckb_sim.ckb_std_main(args)
+    });
 
-    get_cur_tx_mut!().proc_mut_info(&new_id).set_join(jh);
-    let event = get_cur_proc!().get_event_by_pid(&new_id);
+    let event = get_cur_tx!().get_event();
     event.wait();
 
     unsafe { *({ pid }) = new_id.into() };
@@ -62,9 +64,9 @@ pub extern "C" fn ckb_wait(pid: u64, code: *mut i8) -> c_int {
     if !get_cur_tx!().has_proc(&pid) {
         return 5; // WaitFailure
     }
-    let jh = get_cur_tx_mut!().proc_mut_info(&pid).wait_exit();
+    let join_handle = get_cur_tx_mut!().exit(&pid);
 
-    let c = if let Some(j) = jh {
+    let c = if let Some(j) = join_handle {
         j.join().unwrap()
     } else {
         0
@@ -75,7 +77,7 @@ pub extern "C" fn ckb_wait(pid: u64, code: *mut i8) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn ckb_process_id() -> u64 {
-    ProcInfo::ctx_id().into()
+    SimContext::pid().into()
 }
 
 #[no_mangle]
@@ -98,43 +100,16 @@ pub extern "C" fn ckb_read(fd: u64, buf: *mut c_void, length: *mut usize) -> c_i
         return e;
     }
 
-    let has_data = get_cur_tx!().has_data(&fd);
-    if !has_data {
-        get_cur_proc!().notify(Some(&fd));
-        let event = get_cur_proc!().wait(Some(&fd));
-        event.wait();
+    // wait read
+    let event = get_cur_tx_mut!().wait_read(fd.clone(), unsafe { *({ length }) });
+    event.wait();
+
+    let data = get_cur_tx_mut!().read_cache(&fd);
+    assert!(!data.is_empty());
+    unsafe { std::ptr::copy_nonoverlapping(data.as_ptr(), buf as *mut u8, data.len()) };
+    unsafe {
+        *({ length }) = data.len();
     }
-
-    let mut readed_len = 0;
-    let mut buf_len = unsafe { *({ length }) };
-    let mut buf = buf;
-    while buf_len != 0 {
-        if !get_cur_tx!().chech_other_fd(&fd) {
-            break;
-        }
-
-        let (data, cache_size) = get_cur_tx_mut!().read_data(&fd, buf_len);
-        if !data.is_empty() {
-            unsafe { std::ptr::copy_nonoverlapping(data.as_ptr(), buf as *mut u8, data.len()) };
-        }
-        readed_len += data.len();
-        buf_len -= data.len();
-        unsafe {
-            buf = buf.add(data.len());
-        };
-        if !has_data {
-            break;
-        }
-
-        if cache_size == 0 {
-            get_cur_proc!().notify(Some(&fd));
-            let event = get_cur_proc!().wait(Some(&fd));
-            event.wait();
-            break;
-        }
-    }
-
-    utils::set_usize(length, readed_len);
 
     0
 }
@@ -146,37 +121,21 @@ pub extern "C" fn ckb_write(fd: u64, buf: *const c_void, length: *mut usize) -> 
     if let Err(e) = CheckSpawn::Write.check(&fd) {
         return e;
     }
-    let has_data = get_cur_tx_mut!().has_data(&fd);
 
-    if has_data {
-        get_cur_proc!().notify(Some(&fd));
-        let event = get_cur_proc!().wait(Some(&fd));
-        event.wait();
-    }
-
-    if buf.is_null() || utils::to_usize(length) == 0 {
-        utils::set_usize(length, 0);
-        return 0;
-    }
     let buf = unsafe {
         let length = utils::to_usize(length);
         std::slice::from_raw_parts(buf as *const u8, length)
     }
     .to_vec();
-    get_cur_tx_mut!().write_data(&fd, &buf);
-
-    // if !has_data {
-    get_cur_proc!().notify(Some(&fd));
-    let event = get_cur_proc!().wait(Some(&fd));
+    let event = get_cur_tx_mut!().wait_write(fd, &buf);
     event.wait();
-    // }
 
     0
 }
 
 #[no_mangle]
 pub extern "C" fn ckb_inherited_fds(fds: *mut u64, length: *mut usize) -> c_int {
-    let out_fds = get_cur_tx!().proc_info(&ProcInfo::ctx_id()).inherited_fds();
+    let out_fds = get_cur_tx!().inherited_fds();
     let len = out_fds.len().min(utils::to_usize(length));
 
     copy_fds(&out_fds[0..len], fds);
@@ -205,18 +164,6 @@ pub extern "C" fn ckb_load_block_extension(
     _source: usize,
 ) -> c_int {
     panic!("unsupport");
-}
-
-fn new_proc_id(inherited_fds: &[Fd]) -> ProcID {
-    let cur_id = ProcInfo::ctx_id();
-    let new_id = get_cur_tx_mut!().new_process(Some(cur_id.clone()), inherited_fds);
-
-    inherited_fds.iter().all(|fd| {
-        get_cur_tx_mut!().move_pipe(fd, new_id.clone());
-        true
-    });
-
-    new_id
 }
 
 fn copy_fds(in_fd: &[Fd], out_fd: *mut u64) {

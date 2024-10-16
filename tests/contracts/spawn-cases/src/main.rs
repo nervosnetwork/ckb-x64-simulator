@@ -96,16 +96,20 @@ fn parent_simple_read_write() -> Result<Option<u64>, SysError> {
     // write
     for _i in 0..7 {
         let mut actual_length = 0;
+        debug!("-P- {} WBegin len: {}", _i, block.len());
         write_exact(fds[CKB_STDOUT], &block, &mut actual_length)?;
         if actual_length != block.len() {
             return Err(SysError::Unknown(-2i64 as u64));
         }
+        debug!("-P- {} WEnd, actual_length: {}", _i, actual_length);
     }
 
+    debug!("-P- --------");
     // read
     for _i in 0..7 {
         let mut actual_length = 0;
         let mut block = [0u8; 11];
+        debug!("-P- {} RBegin len: {}", _i, block.len());
         read_exact(fds[CKB_STDIN], &mut block, &mut actual_length)?;
 
         if actual_length != block.len() {
@@ -114,6 +118,7 @@ fn parent_simple_read_write() -> Result<Option<u64>, SysError> {
         if block.iter().any(|v| v != &0xff) {
             return Err(SysError::Unknown(-2i64 as u64));
         }
+        debug!("-P- {} REnd actual_length: {}", _i, actual_length);
     }
 
     Ok(Some(pid))
@@ -125,6 +130,7 @@ fn child_simple_read_write() -> Result<(), SysError> {
     for _i in 0..11 {
         let mut block = [0u8; 7];
         let mut actual_length = 0;
+        debug!("-C- {} RBegin len: {}", _i, block.len());
         read_exact(inherited_fds[CKB_STDIN], &mut block, &mut actual_length)?;
         if actual_length != block.len() {
             return Err(SysError::Unknown(-2i64 as u64));
@@ -132,17 +138,21 @@ fn child_simple_read_write() -> Result<(), SysError> {
         if block.iter().any(|v| v != &0xff) {
             return Err(SysError::Unknown(-3i64 as u64));
         }
+        debug!("-C- {} REnd, actual_length: {}", _i, actual_length);
     }
 
+    debug!("-C- --------");
     let block = [
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
     ];
     for _i in 0..7 {
+        debug!("-C- {} WBegin len: {}", _i, block.len());
         let mut actual_length = 0;
         write_exact(inherited_fds[CKB_STDOUT], &block, &mut actual_length)?;
         if actual_length != block.len() {
             return Err(SysError::Unknown(-2i64 as u64));
         }
+        debug!("-C- {} WEnd actual_length: {}", _i, actual_length);
     }
 
     Ok(())
