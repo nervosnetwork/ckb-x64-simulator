@@ -78,7 +78,7 @@ fn check_spawn_simple_read_write() {
     let result = run_spawn_cases(SpawnCasesCmd::ReadWrite, &[]);
     let _ = result.expect("pass");
 }
-
+// There is no automated testing here, the simulator will throw an exception here.
 // #[test]
 // fn check_spawn_write_dead_lock() {
 //     let result = run_spawn_cases(SpawnCasesCmd::WriteDeadLock, &[]);
@@ -91,36 +91,42 @@ fn check_spawn_invalid_fd() {
     result.expect("pass");
 }
 
+//
 // #[test]
 // fn check_spawn_wait_dead_lock() {
-//     let result = run_spawn_cases(&[4]);
-//     assert_eq!(result.unwrap_err().to_string().contains("deadlock"),);
+//     let result = run_spawn_cases(SpawnCasesCmd::WaitDeadLock, &[]);
+//     assert!(result.unwrap_err().to_string().contains("deadlock"));
 // }
 
-// #[test]
-// fn check_spawn_read_write_with_close() {
-//     let result = run_spawn_cases(&[5]);
-// }
+#[test]
+fn check_spawn_read_write_with_close() {
+    let result = run_spawn_cases(SpawnCasesCmd::ReadWriteWithClose, &[]);
+    result.expect("pass");
+}
 
-// #[test]
-// fn check_spawn_wait_multiple() {
-//     let result = run_spawn_cases(&[6]);
-// }
+#[test]
+fn check_spawn_wait_multiple() {
+    let result = run_spawn_cases(SpawnCasesCmd::WaitMultiple, &[]);
+    result.expect("pass");
+}
 
-// #[test]
-// fn check_spawn_inherited_fds() {
-//     let result = run_spawn_cases(&[7]);
-// }
+#[test]
+fn check_spawn_inherited_fds() {
+    let result = run_spawn_cases(SpawnCasesCmd::InheritedFds, &[]);
+    result.expect("pass");
+}
 
-// #[test]
-// fn check_spawn_inherited_fds_without_owner() {
-//     let result = run_spawn_cases(&[8]);
-// }
+#[test]
+fn check_spawn_inherited_fds_without_owner() {
+    let result = run_spawn_cases(SpawnCasesCmd::InheritedFdsWithoutOwner, &[]);
+    result.expect("pass");
+}
 
-// #[test]
-// fn check_spawn_read_then_close() {
-//     let result = run_spawn_cases(&[9]);
-// }
+#[test]
+fn check_spawn_read_then_close() {
+    let result = run_spawn_cases(SpawnCasesCmd::ReadThenClose, &[]);
+    result.expect("pass");
+}
 
 // #[test]
 // fn check_spawn_max_vms_count() {

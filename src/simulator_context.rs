@@ -17,6 +17,7 @@ pub enum ProcStatus {
     WaitSpawn(ProcID),
     ReadWait(ProcID, Fd, usize, Vec<u8>, u64),
     WriteWait(ProcID, Fd, Vec<u8>, u64),
+    CloseWait(ProcID, Fd),
     Terminated(ProcID),
 }
 impl Default for ProcStatus {
@@ -70,6 +71,14 @@ impl std::fmt::Debug for ProcStatus {
                         buf.len()
                     )
                 }
+            }
+            Self::CloseWait(pid, fd) => {
+                write!(
+                    f,
+                    "Close(pid: {}, fd: {})",
+                    u64::from(pid.clone()),
+                    u64::from(fd.clone())
+                )
             }
             Self::Terminated(pid) => write!(f, "Terminated({})", u64::from(pid.clone())),
         }
@@ -240,55 +249,67 @@ impl SimContext {
     }
 
     fn process_io(&mut self, fd: Option<&Fd>) {
-        let mut update_rw = Vec::<(usize, usize)>::new(); // Vec<(Read, Write)>
+        println!("==status 1: {:?}", self.process_status);
 
+        let mut update_rw = Vec::<(usize, usize, bool)>::new(); // Vec<(Read, Write)>
         for i in 0..self.process_status.len() {
             if let Some((_pid, rfd, rlen, _rbuf)) = self.process_status[i].read_wait() {
                 if rlen != &0 {
                     assert!(rfd.is_read());
                     let write_fd = rfd.other_fd();
 
-                    if let Some(w_pos) = self.process_status.iter().position(|status| {
-                        if let Some((_wpid, wfd, _wbuf)) = status.write_wait() {
-                            wfd == &write_fd
-                        } else {
-                            false
-                        }
-                    }) {
-                        update_rw.push((i, w_pos));
+                    let mut is_close = false;
+                    if let Some(w_pos) =
+                        self.process_status.iter().position(|status| match status {
+                            ProcStatus::WriteWait(_wpid, wfd, _wbuf, _) => wfd == &write_fd,
+                            ProcStatus::CloseWait(_wpid, cfd) => {
+                                is_close = true;
+                                cfd == &write_fd
+                            }
+                            _ => false,
+                        })
+                    {
+                        update_rw.push((i, w_pos, is_close));
                     }
                 }
             }
         }
+        update_rw.iter().for_each(|(r_pos, w_pos, is_close)| {
+            if *is_close {
+                let (_, _rfd, rlen, _rbuf) = self.process_status[*r_pos]
+                    .read_wait_mut()
+                    .expect("Unknow error");
+                *rlen = 0;
+            } else {
+                let wbuf = self.process_status[*w_pos]
+                    .write_wait()
+                    .map(|(_, _, buf)| buf.to_vec())
+                    .expect("unknow error");
 
-        update_rw.iter().for_each(|(r_pos, w_pos)| {
-            let wbuf = self.process_status[*w_pos]
-                .write_wait()
-                .map(|(_, _, buf)| buf.to_vec())
-                .expect("unknow error");
+                // Update Read Status
+                let (_, _rfd, rlen, rbuf) = self.process_status[*r_pos]
+                    .read_wait_mut()
+                    .expect("Unknow error");
+                let copy_len = (*rlen).min(wbuf.len());
+                rbuf.extend_from_slice(&wbuf[..copy_len]);
+                *rlen -= copy_len;
 
-            // Update Read Status
-            let (_, _rfd, rlen, rbuf) = self.process_status[*r_pos]
-                .read_wait_mut()
-                .expect("Unknow error");
-            let copy_len = (*rlen).min(wbuf.len());
-            rbuf.extend_from_slice(&wbuf[..copy_len]);
-            *rlen -= copy_len;
-
-            // Update Write Status
-            let (_, _wfd, wbuf) = self.process_status[*w_pos]
-                .write_wait_mut()
-                .expect("unknow error");
-            *wbuf = wbuf[copy_len..].to_vec();
+                // Update Write Status
+                let (_, _wfd, wbuf) = self.process_status[*w_pos]
+                    .write_wait_mut()
+                    .expect("unknow error");
+                *wbuf = wbuf[copy_len..].to_vec();
+            }
         });
 
-        println!("==status befo: {:?}", self.process_status);
+        println!("==status 2: {:?}", self.process_status);
         self.notify_status(fd);
+        println!("==status 3: {:?}", self.process_status);
     }
     fn notify_status(&mut self, fd: Option<&Fd>) {
         if let Some(pos) = self.process_status.iter().position(|s| {
             if let Some((_pid, rfd, len, _)) = s.read_wait() {
-                len == &0 && fd == Some(rfd)
+                len == &0 && (fd == Some(rfd) || fd == Some(&rfd.other_fd()))
             } else {
                 false
             }
@@ -297,6 +318,8 @@ impl SimContext {
                 assert_eq!(pid, self.fds.get(fd).unwrap());
                 self.process(pid).scheduler_event.notify();
                 self.readed_cache.insert(fd.clone(), buf.to_vec());
+            } else {
+                panic!("unknow error");
             }
             return;
         }
@@ -317,6 +340,9 @@ impl SimContext {
                     if buf.is_empty() {
                         notify_items.insert(pid.clone(), i);
                     }
+                }
+                ProcStatus::CloseWait(pid, _fd) => {
+                    notify_items.insert(pid.clone(), i);
                 }
                 ProcStatus::Terminated(pid) => {
                     notify_items.insert(pid.clone(), i);
@@ -340,6 +366,11 @@ impl SimContext {
                     let pid = self.fds.get(fd).expect("unknow error");
                     self.process(pid).scheduler_event.notify();
                 }
+                ProcStatus::CloseWait(pid, _) => {
+                    self.process(&self.process(pid).parent_id)
+                        .scheduler_event
+                        .notify();
+                }
                 ProcStatus::Terminated(pid) => {
                     self.process(&self.process(pid).parent_id)
                         .scheduler_event
@@ -347,8 +378,8 @@ impl SimContext {
                 }
             };
             self.process_status.remove(index);
+            return;
         }
-
         // let mut rm_index = None;
         // for i in (0..self.process_status.len()).rev() {
         //     let status = &self.process_status[i];
@@ -402,11 +433,7 @@ impl SimContext {
             Vec::new(),
             dbg_id,
         ));
-
-        println!("==status r1-1: {:?}", self.process_status);
         self.process_io(Some(&fd));
-        println!("==status r2-1: {:?}", self.process_status);
-
         self.get_event()
     }
     pub fn wait_write(&mut self, fd: Fd, buf: &[u8]) -> Event {
@@ -416,10 +443,7 @@ impl SimContext {
         self.process_status
             .push(ProcStatus::WriteWait(id, fd.clone(), buf.to_vec(), dbg_id));
 
-        println!("==status w1-1: {:?}", self.process_status);
         self.process_io(Some(&fd));
-        println!("==status w2-1: {:?}", self.process_status);
-
         self.get_event()
     }
     pub fn read_cache(&mut self, fd: &Fd) -> Vec<u8> {
@@ -454,11 +478,20 @@ impl SimContext {
 
         (fds.0, fds.1)
     }
-    pub fn close_pipe(&mut self, fd: Fd) -> bool {
+    pub fn close_pipe(&mut self, fd: Fd) -> Result<Event, ()> {
         if !self.has_fd(&fd) {
-            false
+            Err(())
         } else {
-            self.fds.remove(&fd).is_some()
+            self.process_status
+                .push(ProcStatus::CloseWait(ProcInfo::id(), fd.clone()));
+            self.process_io(Some(&fd));
+
+            if self.fds.remove(&fd).is_some() {
+                Ok(self.process(&ProcInfo::id()).scheduler_event.clone())
+            } else {
+                //
+                Err(())
+            }
         }
     }
     pub fn len_pipe(&self) -> usize {

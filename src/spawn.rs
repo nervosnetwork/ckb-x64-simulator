@@ -69,7 +69,9 @@ pub extern "C" fn ckb_wait(pid: u64, code: *mut i8) -> c_int {
     let c = if let Some(j) = join_handle {
         j.join().unwrap()
     } else {
-        0
+        // error
+        // panic!("unknow pid: {:?}", pid)
+        return 5; // WaitFailure
     };
     unsafe { *({ code }) = c };
     0
@@ -105,8 +107,10 @@ pub extern "C" fn ckb_read(fd: u64, buf: *mut c_void, length: *mut usize) -> c_i
     event.wait();
 
     let data = get_cur_tx_mut!().read_cache(&fd);
-    assert!(!data.is_empty());
-    unsafe { std::ptr::copy_nonoverlapping(data.as_ptr(), buf as *mut u8, data.len()) };
+
+    if !data.is_empty() {
+        unsafe { std::ptr::copy_nonoverlapping(data.as_ptr(), buf as *mut u8, data.len()) };
+    }
     unsafe {
         *({ length }) = data.len();
     }
@@ -146,9 +150,9 @@ pub extern "C" fn ckb_inherited_fds(fds: *mut u64, length: *mut usize) -> c_int 
 #[no_mangle]
 pub extern "C" fn ckb_close(fd: u64) -> c_int {
     let fd = fd.into();
-
-    let r = get_cur_tx_mut!().close_pipe(fd);
-    if r {
+    let event = get_cur_tx_mut!().close_pipe(fd);
+    if let Ok(event) = event {
+        event.wait();
         0
     } else {
         6 // CKB_INVALID_FD

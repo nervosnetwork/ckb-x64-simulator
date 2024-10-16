@@ -47,6 +47,12 @@ pub enum SpawnCasesCmd {
     ReadWrite,
     WriteDeadLock,
     InvalidFd,
+    WaitDeadLock,
+    ReadWriteWithClose,
+    WaitMultiple,
+    InheritedFds,
+    InheritedFdsWithoutOwner,
+    ReadThenClose,
 }
 impl From<u8> for SpawnCasesCmd {
     fn from(value: u8) -> Self {

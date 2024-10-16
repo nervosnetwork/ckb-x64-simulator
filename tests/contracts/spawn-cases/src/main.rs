@@ -9,6 +9,7 @@ ckb_std::default_alloc!();
 #[cfg(any(feature = "native-simulator", test))]
 extern crate alloc;
 use alloc::vec::Vec;
+use ckb_std::ckb_constants::Source;
 use ckb_std::ckb_types::bytes::Bytes;
 use ckb_std::ckb_types::core::ScriptHashType;
 use ckb_std::ckb_types::prelude::Unpack;
@@ -41,29 +42,27 @@ fn create_std_fds() -> Result<([u64; 2], [u64; 3]), SysError> {
     let (r1, w1) = syscalls::pipe()?;
     Ok(([r0, w1], [r1, w0, 0]))
 }
-
-fn full_spawn(args: &[&str]) -> Result<(u64, [u64; 2]), SysError> {
-    let (fds, inherited_fds) = create_std_fds()?;
-
-    let info = ckb_std::high_level::load_cell_lock(0, ckb_std::ckb_constants::Source::GroupInput)?;
-    let code_hash = info.code_hash();
-
+fn new_spawn(args: &[&str], inherited_fds: &[u64]) -> Result<u64, SysError> {
     let args_buf: Vec<Vec<u8>> = args.iter().map(|f| [f.as_bytes(), &[0]].concat()).collect();
-
     let c_args: Vec<&CStr> = args_buf
         .iter()
         .map(|f| unsafe { CStr::from_bytes_with_nul_unchecked(f) })
         .collect();
     let pid = ckb_std::high_level::spawn_cell(
-        &code_hash.raw_data(),
+        &ckb_std::high_level::load_cell_lock(0, Source::GroupInput)?
+            .code_hash()
+            .raw_data(),
         ScriptHashType::Data2,
         &c_args,
-        &inherited_fds,
+        inherited_fds,
     )?;
-
+    Ok(pid)
+}
+fn full_spawn(args: &[&str]) -> Result<(u64, [u64; 2]), SysError> {
+    let (fds, inherited_fds) = create_std_fds()?;
+    let pid = new_spawn(args, &inherited_fds)?;
     Ok((pid, fds))
 }
-
 fn write_exact(fd: u64, buf: &[u8], actual_length: &mut usize) -> Result<(), SysError> {
     let mut w_buf = buf;
     *actual_length = 0;
@@ -74,7 +73,6 @@ fn write_exact(fd: u64, buf: &[u8], actual_length: &mut usize) -> Result<(), Sys
     }
     Ok(())
 }
-
 fn read_exact(fd: u64, buf: &mut [u8], actual_length: &mut usize) -> Result<(), SysError> {
     let mut r_buf = buf;
     *actual_length = 0;
@@ -200,9 +198,158 @@ fn parent_invalid_fd() -> Result<Option<u64>, SysError> {
         return Err(SysError::Unknown(-2i64 as u64));
     }
 
-    // TODO
+    let inherited_fds = [r, 0];
+    let args = [""];
+    let args_buf: Vec<Vec<u8>> = args.iter().map(|f| [f.as_bytes(), &[0]].concat()).collect();
+    let c_args: Vec<&CStr> = args_buf
+        .iter()
+        .map(|f| unsafe { CStr::from_bytes_with_nul_unchecked(f) })
+        .collect();
+    let pid = ckb_std::high_level::spawn_cell(
+        &ckb_std::high_level::load_cell_lock(0, Source::GroupInput)?
+            .code_hash()
+            .raw_data(),
+        ScriptHashType::Data2,
+        &c_args,
+        &inherited_fds,
+    )?;
+
+    let mut buf = [0u8; 4];
+    let err = syscalls::read(r, &mut buf).unwrap_err();
+    assert_eq!(err, SysError::InvalidFd);
+
+    let (r1, w1) = syscalls::pipe()?;
+    syscalls::close(r1)?;
+    let buf = [0xfu8; 4];
+    let err = syscalls::write(w1, &buf).unwrap_err();
+    assert_eq!(err, SysError::OtherEndClosed);
+
+    let (r1, w1) = syscalls::pipe()?;
+    syscalls::close(w1)?;
+    let mut buf = [0xfu8; 4];
+    let err = syscalls::read(r1, &mut buf).unwrap_err();
+    assert_eq!(err, SysError::OtherEndClosed);
+
+    syscalls::wait(pid)?;
 
     Ok(None)
+}
+
+fn parent_wait_dead_lock() -> Result<Option<u64>, SysError> {
+    let (pid, _) = full_spawn(&[""])?;
+    Ok(Some(pid))
+}
+fn child_wait_dead_lock() -> Result<(), SysError> {
+    let pid = 0;
+    syscalls::wait(pid)?;
+    Ok(())
+}
+
+fn parent_read_write_with_close() -> Result<Option<u64>, SysError> {
+    let (pid, fds) = full_spawn(&[""])?;
+    let block = [0xFFu8; 100];
+    let mut actual_length = 0;
+    write_exact(fds[CKB_STDOUT], &block, &mut actual_length)?;
+
+    if actual_length != block.len() {
+        return Err(SysError::Unknown(-2i64 as u64));
+    }
+
+    Ok(Some(pid))
+}
+fn child_read_write_with_close() -> Result<(), SysError> {
+    let mut inherited_fds = [0u64; 2];
+    syscalls::inherited_fds(&mut inherited_fds);
+
+    let mut block = [0u8; 100];
+    let mut actual_length = 0;
+    read_exact(inherited_fds[CKB_STDIN], &mut block, &mut actual_length)?;
+    if actual_length != block.len() {
+        return Err(SysError::Unknown(-2i64 as u64));
+    }
+
+    if block.iter().any(|v| v != &0xFF) {
+        return Err(SysError::Unknown(-3i64 as u64));
+    }
+
+    syscalls::close(inherited_fds[CKB_STDIN])?;
+
+    Ok(())
+}
+
+fn parent_wait_multiple() -> Result<Option<u64>, SysError> {
+    let (pid, _fds) = full_spawn(&[""])?;
+
+    let exit_code = syscalls::wait(pid)?;
+    assert_eq!(exit_code, 0);
+
+    let err = syscalls::wait(pid).unwrap_err();
+    assert_eq!(err, SysError::WaitFailure);
+
+    let (pid, _fds) = full_spawn(&[""])?;
+
+    Ok(Some(pid))
+}
+
+fn parent_inherited_fds() -> Result<Option<u64>, SysError> {
+    let mut inherited_fds = [0u64; 11];
+    for i in 0..5 {
+        let (r, w) = syscalls::pipe()?;
+        inherited_fds[i * 2] = r;
+        inherited_fds[i * 2 + 1] = w;
+    }
+
+    let pid = new_spawn(&[""], &inherited_fds)?;
+    Ok(Some(pid))
+}
+fn child_inherited_fds() -> Result<(), SysError> {
+    let mut inherited_fds = [0u64; 10];
+    syscalls::inherited_fds(&mut inherited_fds);
+
+    for i in 0u64..10u64 {
+        if inherited_fds[i as usize] != i + 2 {
+            return Err(SysError::Unknown(-2i64 as u64));
+        }
+    }
+
+    Ok(())
+}
+
+fn parent_inherited_fds_without_owner() -> Result<Option<u64>, SysError> {
+    let fds = [0xFF, 0xFF, 0];
+    let err = new_spawn(&[""], &fds).unwrap_err();
+    assert_eq!(err, SysError::InvalidFd);
+
+    let (r, w) = syscalls::pipe()?;
+
+    let pid = new_spawn(&[""], &[r, w, 0])?;
+    let err = new_spawn(&[""], &[r, w, 0]).unwrap_err();
+    assert_eq!(err, SysError::InvalidFd);
+
+    Ok(Some(pid))
+}
+
+fn parent_read_then_close() -> Result<Option<u64>, SysError> {
+    let (pid, fds) = full_spawn(&[""])?;
+    debug!("-P- Spawn end, fds: {:?}", fds);
+    syscalls::close(fds[CKB_STDOUT])?;
+    debug!("-P- Close fd: {}", fds[CKB_STDOUT]);
+    Ok(Some(pid))
+}
+fn child_read_then_close() -> Result<(), SysError> {
+    let mut fds = [0u64; 2];
+    syscalls::inherited_fds(&mut fds);
+    debug!("-C- inherited fds {:?}", fds);
+
+    let mut data = [0u8; 8];
+    debug!("-C- Read begin");
+    let data_len = syscalls::read(fds[CKB_STDIN], &mut data)?;
+    debug!("-C- data len : {}", data_len);
+
+    let data_len = syscalls::read(fds[CKB_STDIN], &mut data);
+    debug!("-C- data len : {:?}", data_len);
+
+    Ok(())
 }
 
 fn parent_entry(cmd: SpawnCasesCmd) -> i8 {
@@ -213,6 +360,12 @@ fn parent_entry(cmd: SpawnCasesCmd) -> i8 {
         SpawnCasesCmd::ReadWrite => parent_simple_read_write(),
         SpawnCasesCmd::WriteDeadLock => parent_write_dead_lock(),
         SpawnCasesCmd::InvalidFd => parent_invalid_fd(),
+        SpawnCasesCmd::WaitDeadLock => parent_wait_dead_lock(),
+        SpawnCasesCmd::ReadWriteWithClose => parent_read_write_with_close(),
+        SpawnCasesCmd::WaitMultiple => parent_wait_multiple(),
+        SpawnCasesCmd::InheritedFds => parent_inherited_fds(),
+        SpawnCasesCmd::InheritedFdsWithoutOwner => parent_inherited_fds_without_owner(),
+        SpawnCasesCmd::ReadThenClose => parent_read_then_close(),
     };
 
     let code = match ret {
@@ -237,7 +390,13 @@ fn child_entry(cmd: SpawnCasesCmd) -> i8 {
         SpawnCasesCmd::Unknow => panic!("unsupport"),
         SpawnCasesCmd::ReadWrite => child_simple_read_write(),
         SpawnCasesCmd::WriteDeadLock => child_write_dead_lock(),
-        SpawnCasesCmd::InvalidFd => panic!("unsupport"),
+        SpawnCasesCmd::InvalidFd => Ok(()),
+        SpawnCasesCmd::WaitDeadLock => child_wait_dead_lock(),
+        SpawnCasesCmd::ReadWriteWithClose => child_read_write_with_close(),
+        SpawnCasesCmd::WaitMultiple => Ok(()),
+        SpawnCasesCmd::InheritedFds => child_inherited_fds(),
+        SpawnCasesCmd::InheritedFdsWithoutOwner => Ok(()),
+        SpawnCasesCmd::ReadThenClose => child_read_then_close(),
     };
 
     let code = match ret {
