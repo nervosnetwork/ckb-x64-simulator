@@ -405,7 +405,7 @@ impl SimContext {
                 ProcStatus::Default(_) => (),
                 ProcStatus::WaitSpawn(pid, is_rel) => {
                     if *is_rel {
-                        self.process(&self.process(&pid).parent_id)
+                        self.process(&self.process(pid).parent_id)
                             .scheduler_event
                             .notify();
                         rm_index = Some(i);
@@ -415,7 +415,7 @@ impl SimContext {
                 ProcStatus::ReadWait(_, fd, len, buf, _) => {
                     if len == &0 {
                         self.readed_cache.insert(fd.clone(), buf.clone());
-                        let pid = self.fds.get(&fd).expect("unknow error");
+                        let pid = self.fds.get(fd).expect("unknow error");
                         self.process(pid).scheduler_event.notify();
                         rm_index = Some(i);
                         break;
@@ -423,14 +423,14 @@ impl SimContext {
                 }
                 ProcStatus::WriteWait(_, fd, buf, _) => {
                     if buf.is_empty() {
-                        let pid = self.fds.get(&fd).expect("unknow error");
+                        let pid = self.fds.get(fd).expect("unknow error");
                         self.process(pid).scheduler_event.notify();
                         rm_index = Some(i);
                         break;
                     }
                 }
                 ProcStatus::Terminated(pid) => {
-                    self.process(&self.process(&pid).parent_id)
+                    self.process(&self.process(pid).parent_id)
                         .scheduler_event
                         .notify();
                     rm_index = Some(i);
