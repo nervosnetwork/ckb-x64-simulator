@@ -14,7 +14,7 @@ const MAX_PROCESSES_COUNT: u64 = 16;
 #[derive(PartialEq, Eq, Clone)]
 pub enum ProcStatus {
     Default(ProcID),
-    WaitSpawn(ProcID),
+    WaitSpawn(ProcID, bool), // PID, is_release
     ReadWait(ProcID, Fd, usize, Vec<u8>, u64),
     WriteWait(ProcID, Fd, Vec<u8>, u64),
     CloseWait(ProcID, Fd),
@@ -29,7 +29,13 @@ impl std::fmt::Debug for ProcStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Default(pid) => write!(f, "Loaded({})", u64::from(pid.clone())),
-            Self::WaitSpawn(pid) => write!(f, "WaitSpawn({})", u64::from(pid.clone())),
+            Self::WaitSpawn(pid, is_rel) => {
+                if *is_rel {
+                    write!(f, "WaitSpawn N({})", u64::from(pid.clone()))
+                } else {
+                    write!(f, "WaitSpawn({})", u64::from(pid.clone()))
+                }
+            }
             Self::ReadWait(pid, fd, len, buf, dbg_id) => {
                 if len == &0 {
                     write!(
@@ -195,7 +201,8 @@ impl SimContext {
             self.move_pipe(fd, id.clone());
             true
         });
-        self.process_status.push(ProcStatus::WaitSpawn(id.clone()));
+        self.process_status
+            .push(ProcStatus::WaitSpawn(id.clone(), false));
 
         let id2 = id.clone();
         let join_handle = std::thread::spawn(move || {
@@ -251,7 +258,7 @@ impl SimContext {
     fn process_io(&mut self, fd: Option<&Fd>) {
         println!("==status 1: {:?}", self.process_status);
 
-        let mut update_rw = Vec::<(usize, usize, bool)>::new(); // Vec<(Read, Write)>
+        let mut update_rw: Vec<(usize, usize, bool)> = Vec::<(usize, usize, bool)>::new(); // Vec<(Read, Write)>
         for i in 0..self.process_status.len() {
             if let Some((_pid, rfd, rlen, _rbuf)) = self.process_status[i].read_wait() {
                 if rlen != &0 {
@@ -302,124 +309,145 @@ impl SimContext {
             }
         });
 
+        self.process_status.iter_mut().any(|status| {
+            if let ProcStatus::WaitSpawn(pid, is_rel) = status {
+                if pid == &ProcInfo::id() && !*is_rel {
+                    *is_rel = true;
+                }
+            }
+            false
+        });
+
         println!("==status 2: {:?}", self.process_status);
         self.notify_status(fd);
         println!("==status 3: {:?}", self.process_status);
     }
-    fn notify_status(&mut self, fd: Option<&Fd>) {
-        if let Some(pos) = self.process_status.iter().position(|s| {
-            if let Some((_pid, rfd, len, _)) = s.read_wait() {
-                len == &0 && (fd == Some(rfd) || fd == Some(&rfd.other_fd()))
-            } else {
-                false
-            }
-        }) {
-            if let Some((pid, fd, _len, buf)) = self.process_status.remove(pos).read_wait() {
-                assert_eq!(pid, self.fds.get(fd).unwrap());
-                self.process(pid).scheduler_event.notify();
-                self.readed_cache.insert(fd.clone(), buf.to_vec());
-            } else {
-                panic!("unknow error");
-            }
-            return;
-        }
+    fn notify_status(&mut self, _fd: Option<&Fd>) {
+        // if let Some(pos) = self.process_status.iter().position(|s| {
+        //     if let Some((_pid, rfd, len, _)) = s.read_wait() {
+        //         len == &0 && (fd == Some(rfd) || fd == Some(&rfd.other_fd()))
+        //     } else {
+        //         false
+        //     }
+        // }) {
+        //     if let Some((pid, fd, _len, buf)) = self.process_status.remove(pos).read_wait() {
+        //         assert_eq!(pid, self.fds.get(fd).unwrap());
+        //         self.process(pid).scheduler_event.notify();
+        //         self.readed_cache.insert(fd.clone(), buf.to_vec());
+        //     } else {
+        //         panic!("unknow error");
+        //     }
+        //     return;
+        // }
 
-        let mut notify_items = std::collections::BTreeMap::<ProcID, usize>::new();
-        for i in 0..self.process_status.len() {
-            match &self.process_status[i] {
-                ProcStatus::Default(_) => (),
-                ProcStatus::WaitSpawn(pid) => {
-                    notify_items.insert(pid.clone(), i);
-                }
-                ProcStatus::ReadWait(pid, _fd, len, _buf, _) => {
-                    if len == &0 {
-                        notify_items.insert(pid.clone(), i);
-                    }
-                }
-                ProcStatus::WriteWait(pid, _fd, buf, _) => {
-                    if buf.is_empty() {
-                        notify_items.insert(pid.clone(), i);
-                    }
-                }
-                ProcStatus::CloseWait(pid, _fd) => {
-                    notify_items.insert(pid.clone(), i);
-                }
-                ProcStatus::Terminated(pid) => {
-                    notify_items.insert(pid.clone(), i);
-                }
-            };
-        }
-        if let Some((_pid, index)) = notify_items.pop_first() {
-            match &self.process_status[index] {
-                ProcStatus::Default(_) => (),
-                ProcStatus::WaitSpawn(pid) => {
-                    self.process(&self.process(pid).parent_id)
-                        .scheduler_event
-                        .notify();
-                }
-                ProcStatus::ReadWait(_, fd, _len, buf, _) => {
-                    self.readed_cache.insert(fd.clone(), buf.clone());
-                    let pid = self.fds.get(fd).expect("unknow error");
-                    self.process(pid).scheduler_event.notify();
-                }
-                ProcStatus::WriteWait(_, fd, _buf, _) => {
-                    let pid = self.fds.get(fd).expect("unknow error");
-                    self.process(pid).scheduler_event.notify();
-                }
-                ProcStatus::CloseWait(pid, _) => {
-                    self.process(&self.process(pid).parent_id)
-                        .scheduler_event
-                        .notify();
-                }
-                ProcStatus::Terminated(pid) => {
-                    self.process(&self.process(pid).parent_id)
-                        .scheduler_event
-                        .notify();
-                }
-            };
-            self.process_status.remove(index);
-            return;
-        }
-        // let mut rm_index = None;
-        // for i in (0..self.process_status.len()).rev() {
-        //     let status = &self.process_status[i];
-        //     match status {
+        // let mut notify_items = std::collections::BTreeMap::<ProcID, usize>::new();
+        // for i in 0..self.process_status.len() {
+        //     match &self.process_status[i] {
         //         ProcStatus::Default(_) => (),
-        //         ProcStatus::WaitSpawn(pid) => {
-        //             self.process(&self.process(&pid).parent_id)
-        //                 .scheduler_event
-        //                 .notify();
-        //             break;
+        //         ProcStatus::WaitSpawn(pid, is_rel) => {
+        //             if *is_rel {
+        //                 notify_items.insert(pid.clone(), i);
+        //             }
         //         }
-        //         ProcStatus::ReadWait(_, fd, len, buf, _) => {
+        //         ProcStatus::ReadWait(pid, _fd, len, _buf, _) => {
         //             if len == &0 {
-        //                 self.readed_cache.insert(fd.clone(), buf.clone());
-        //                 let pid = self.fds.get(&fd).expect("unknow error");
-        //                 self.process(pid).scheduler_event.notify();
-        //                 rm_index = Some(i);
-        //                 break;
+        //                 notify_items.insert(pid.clone(), i);
         //             }
         //         }
-        //         ProcStatus::WriteWait(_, fd, buf, _) => {
+        //         ProcStatus::WriteWait(pid, _fd, buf, _) => {
         //             if buf.is_empty() {
-        //                 let pid = self.fds.get(&fd).expect("unknow error");
-        //                 self.process(pid).scheduler_event.notify();
-        //                 rm_index = Some(i);
-        //                 break;
+        //                 notify_items.insert(pid.clone(), i);
         //             }
+        //         }
+        //         ProcStatus::CloseWait(pid, _fd) => {
+        //             notify_items.insert(pid.clone(), i);
         //         }
         //         ProcStatus::Terminated(pid) => {
-        //             self.process(&self.process(&pid).parent_id)
-        //                 .scheduler_event
-        //                 .notify();
-        //             rm_index = Some(i);
-        //             break;
+        //             notify_items.insert(pid.clone(), i);
         //         }
         //     };
         // }
-        // if let Some(index) = rm_index {
+        // if let Some((_pid, index)) = notify_items.pop_first() {
+        //     match &self.process_status[index] {
+        //         ProcStatus::Default(_) => (),
+        //         ProcStatus::WaitSpawn(pid, _) => {
+        //             self.process(&self.process(pid).parent_id)
+        //                 .scheduler_event
+        //                 .notify();
+        //         }
+        //         ProcStatus::ReadWait(_, fd, _len, buf, _) => {
+        //             self.readed_cache.insert(fd.clone(), buf.clone());
+        //             let pid = self.fds.get(fd).expect("unknow error");
+        //             self.process(pid).scheduler_event.notify();
+        //         }
+        //         ProcStatus::WriteWait(_, fd, _buf, _) => {
+        //             let pid = self.fds.get(fd).expect("unknow error");
+        //             self.process(pid).scheduler_event.notify();
+        //         }
+        //         ProcStatus::CloseWait(pid, _) => {
+        //             self.process(&self.process(pid).parent_id)
+        //                 .scheduler_event
+        //                 .notify();
+        //         }
+        //         ProcStatus::Terminated(pid) => {
+        //             self.process(&self.process(pid).parent_id)
+        //                 .scheduler_event
+        //                 .notify();
+        //         }
+        //     };
         //     self.process_status.remove(index);
         // }
+
+        let mut rm_index = None;
+        for i in (0..self.process_status.len()).rev() {
+            let status = &self.process_status[i];
+            match status {
+                ProcStatus::Default(_) => (),
+                ProcStatus::WaitSpawn(pid, is_rel) => {
+                    if *is_rel {
+                        self.process(&self.process(&pid).parent_id)
+                            .scheduler_event
+                            .notify();
+                        rm_index = Some(i);
+                        break;
+                    }
+                }
+                ProcStatus::ReadWait(_, fd, len, buf, _) => {
+                    if len == &0 {
+                        self.readed_cache.insert(fd.clone(), buf.clone());
+                        let pid = self.fds.get(&fd).expect("unknow error");
+                        self.process(pid).scheduler_event.notify();
+                        rm_index = Some(i);
+                        break;
+                    }
+                }
+                ProcStatus::WriteWait(_, fd, buf, _) => {
+                    if buf.is_empty() {
+                        let pid = self.fds.get(&fd).expect("unknow error");
+                        self.process(pid).scheduler_event.notify();
+                        rm_index = Some(i);
+                        break;
+                    }
+                }
+                ProcStatus::Terminated(pid) => {
+                    self.process(&self.process(&pid).parent_id)
+                        .scheduler_event
+                        .notify();
+                    rm_index = Some(i);
+                    break;
+                }
+                ProcStatus::CloseWait(_pid, fd) => {
+                    let pid = self.fds.get(fd).unwrap();
+
+                    self.process(pid).scheduler_event.notify();
+                    rm_index = Some(i);
+                    break;
+                }
+            };
+        }
+        if let Some(index) = rm_index {
+            self.process_status.remove(index);
+        }
     }
     pub fn wait_read(&mut self, fd: Fd, len: usize) -> Event {
         let id = ProcInfo::id();

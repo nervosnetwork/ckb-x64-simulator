@@ -53,6 +53,10 @@ pub enum SpawnCasesCmd {
     InheritedFds,
     InheritedFdsWithoutOwner,
     ReadThenClose,
+    MaxVmsCount,
+    MaxFdsLimit,
+    CloseInvalidFd,
+    WriteClosedFd,
 }
 impl From<u8> for SpawnCasesCmd {
     fn from(value: u8) -> Self {

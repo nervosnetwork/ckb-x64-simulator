@@ -128,12 +128,26 @@ fn check_spawn_read_then_close() {
     result.expect("pass");
 }
 
-// #[test]
-// fn check_spawn_max_vms_count() {
-//     let result = run_spawn_cases(&[10]);
-// }
+#[test]
+fn check_spawn_max_vms_count() {
+    let result = run_spawn_cases(SpawnCasesCmd::MaxVmsCount, &[]);
+    result.expect("pass");
+}
 
-// #[test]
-// fn check_spawn_max_fds_limit() {
-//     let result = run_spawn_cases(&[11]);
-// }
+#[test]
+fn check_spawn_max_fds_limit() {
+    let result = run_spawn_cases(SpawnCasesCmd::MaxFdsLimit, &[]);
+    result.expect("pass");
+}
+
+#[test]
+fn check_close_invalid_fd() {
+    let result = run_spawn_cases(SpawnCasesCmd::CloseInvalidFd, &[]);
+    result.expect("pass");
+}
+
+#[test]
+fn check_write_closed_fd() {
+    let result = run_spawn_cases(SpawnCasesCmd::WriteClosedFd, &[]);
+    result.expect("pass");
+}
