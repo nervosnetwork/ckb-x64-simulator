@@ -452,6 +452,40 @@ fn child_write_closed_fd() -> Result<(), SysError> {
     Ok(())
 }
 
+fn parent_spawn_pid() -> Result<Option<u64>, SysError> {
+    let cur_pid = syscalls::process_id();
+    assert_eq!(cur_pid, 0);
+
+    let (pid_1, fds_1) = full_spawn(&[""])?;
+    assert_eq!(pid_1, 1);
+
+    let (pid_2, fds_2) = full_spawn(&[""])?;
+    assert_eq!(pid_2, 2);
+
+    let mut buf = [0u8; 8];
+    let mut actual_length = 0;
+    read_exact(fds_1[CKB_STDIN], &mut buf, &mut actual_length)?;
+    assert_eq!(pid_1, u64::from_le_bytes(buf));
+
+    let mut buf = [0u8; 8];
+    let mut actual_length = 0;
+    read_exact(fds_2[CKB_STDIN], &mut buf, &mut actual_length)?;
+    assert_eq!(pid_2, u64::from_le_bytes(buf));
+
+    Ok(None)
+}
+fn child_spawn_pid() -> Result<(), SysError> {
+    let pid = syscalls::process_id();
+
+    let mut fds = [0; 2];
+    syscalls::inherited_fds(&mut fds);
+
+    let mut actual_length = 0;
+    write_exact(fds[CKB_STDOUT], &pid.to_le_bytes(), &mut actual_length)?;
+
+    Ok(())
+}
+
 fn parent_entry(cmd: SpawnCasesCmd) -> i8 {
     debug!("-P- Begin cmd: {:?}, pid: {}", cmd, syscalls::process_id());
 
@@ -470,6 +504,7 @@ fn parent_entry(cmd: SpawnCasesCmd) -> i8 {
         SpawnCasesCmd::MaxFdsLimit => parent_max_fds_limit(),
         SpawnCasesCmd::CloseInvalidFd => parent_close_invalid_fd(),
         SpawnCasesCmd::WriteClosedFd => parent_write_closed_fd(),
+        SpawnCasesCmd::CheckPID => parent_spawn_pid(),
     };
 
     let code = match ret {
@@ -505,6 +540,7 @@ fn child_entry(cmd: SpawnCasesCmd) -> i8 {
         SpawnCasesCmd::MaxFdsLimit => child_max_fds_limit(),
         SpawnCasesCmd::CloseInvalidFd => Ok(()),
         SpawnCasesCmd::WriteClosedFd => child_write_closed_fd(),
+        SpawnCasesCmd::CheckPID => child_spawn_pid(),
     };
 
     let code = match ret {

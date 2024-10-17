@@ -151,3 +151,9 @@ fn check_write_closed_fd() {
     let result = run_spawn_cases(SpawnCasesCmd::WriteClosedFd, &[]);
     result.expect("pass");
 }
+
+#[test]
+fn check_pid() {
+    let result = run_spawn_cases(SpawnCasesCmd::CheckPID, &[]);
+    result.expect("pass");
+}

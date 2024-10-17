@@ -57,6 +57,7 @@ pub enum SpawnCasesCmd {
     MaxFdsLimit,
     CloseInvalidFd,
     WriteClosedFd,
+    CheckPID,
 }
 impl From<u8> for SpawnCasesCmd {
     fn from(value: u8) -> Self {
