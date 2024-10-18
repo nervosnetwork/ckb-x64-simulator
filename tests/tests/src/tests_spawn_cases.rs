@@ -19,12 +19,6 @@ fn run_spawn_cases(cmd: SpawnCasesCmd, args: &[u8]) -> Result<Cycle, CKBError> {
     let out_point_parent = context.deploy_cell_by_name("spawn-cases");
 
     let args = {
-        // let child_code_hash = context
-        //     .cells
-        //     .get(&out_point_parent)
-        //     .map(|(_, bin)| CellOutput::calc_data_hash(bin).as_bytes().to_vec())
-        //     .unwrap();
-        // vec![vec![cmd.into()], child_code_hash, args.to_vec()].concat()
         vec![vec![cmd.into()], args.to_vec()].concat()
     };
 
@@ -78,6 +72,7 @@ fn check_spawn_simple_read_write() {
     let result = run_spawn_cases(SpawnCasesCmd::ReadWrite, &[]);
     let _ = result.expect("pass");
 }
+
 // There is no automated testing here, the simulator will throw an exception here.
 // #[test]
 // fn check_spawn_write_dead_lock() {
