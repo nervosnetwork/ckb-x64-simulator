@@ -1,4 +1,8 @@
 use crate::{
+    constants::{
+        CKB_INVALID_FD, CKB_MAX_FDS_CREATED, CKB_MAX_VMS_SPAWNED, CKB_OTHER_END_CLOSED,
+        CKB_SUCCESS, CKB_WAIT_FAILURE,
+    },
     get_cur_tx, get_cur_tx_mut,
     global_data::GlobalData,
     simulator_context::SimContext,
@@ -41,7 +45,7 @@ pub extern "C" fn ckb_spawn_cell(
         }
     }
     if get_cur_tx!().max_proc_spawned() {
-        return 8; // MAX_VMS_SPAWNED
+        return CKB_MAX_VMS_SPAWNED;
     }
 
     let ckb_sim = utils::CkbNativeSimulator::new_by_hash(code_hash, hash_type, offset, length);
@@ -55,26 +59,24 @@ pub extern "C" fn ckb_spawn_cell(
     event.wait();
 
     unsafe { *({ pid }) = new_id.into() };
-    0
+    CKB_SUCCESS
 }
 
 #[no_mangle]
 pub extern "C" fn ckb_wait(pid: u64, code: *mut i8) -> c_int {
     let pid: ProcID = pid.into();
     if !get_cur_tx!().has_proc(&pid) {
-        return 5; // WaitFailure
+        return CKB_WAIT_FAILURE;
     }
     let join_handle = get_cur_tx_mut!().exit(&pid);
 
     let c = if let Some(j) = join_handle {
         j.join().unwrap()
     } else {
-        // error
-        // panic!("unknow pid: {:?}", pid)
-        return 5; // WaitFailure
+        return CKB_WAIT_FAILURE;
     };
     unsafe { *({ code }) = c };
-    0
+    CKB_SUCCESS
 }
 
 #[no_mangle]
@@ -85,12 +87,12 @@ pub extern "C" fn ckb_process_id() -> u64 {
 #[no_mangle]
 pub extern "C" fn ckb_pipe(fds: *mut u64) -> c_int {
     if get_cur_tx!().len_pipe() >= MAX_FDS {
-        return 9; // MAX_FDS_CREATED
+        return CKB_MAX_FDS_CREATED;
     }
 
     let out = get_cur_tx_mut!().new_pipe();
     copy_fds(&[out.0, out.1], fds);
-    0
+    CKB_SUCCESS
 }
 
 #[no_mangle]
@@ -115,7 +117,7 @@ pub extern "C" fn ckb_read(fd: u64, buf: *mut c_void, length: *mut usize) -> c_i
         *({ length }) = data.len();
     }
 
-    0
+    CKB_SUCCESS
 }
 
 #[no_mangle]
@@ -134,7 +136,7 @@ pub extern "C" fn ckb_write(fd: u64, buf: *const c_void, length: *mut usize) -> 
     let event = get_cur_tx_mut!().wait_write(fd, &buf);
     event.wait();
 
-    0
+    CKB_SUCCESS
 }
 
 #[no_mangle]
@@ -144,7 +146,7 @@ pub extern "C" fn ckb_inherited_fds(fds: *mut u64, length: *mut usize) -> c_int 
 
     copy_fds(&out_fds[0..len], fds);
     unsafe { *({ length }) = len };
-    0
+    CKB_SUCCESS
 }
 
 #[no_mangle]
@@ -153,9 +155,9 @@ pub extern "C" fn ckb_close(fd: u64) -> c_int {
     let event = get_cur_tx_mut!().close_pipe(fd);
     if let Ok(event) = event {
         event.wait();
-        0
+        CKB_SUCCESS
     } else {
-        6 // CKB_INVALID_FD
+        CKB_INVALID_FD
     }
 }
 
@@ -203,12 +205,12 @@ impl CheckSpawn {
             Self::Def => (),
             Self::Read => {
                 if !fd.is_read() {
-                    return Err(6); // CKB_INVALID_FD
+                    return Err(CKB_INVALID_FD);
                 }
             }
             Self::Write => {
                 if fd.is_read() {
-                    return Err(6); // CKB_INVALID_FD
+                    return Err(CKB_INVALID_FD);
                 }
             }
         }
@@ -216,10 +218,10 @@ impl CheckSpawn {
         let g = GlobalData::locked();
         let tx_ctx = g.get_tx(&SimContext::ctx_id());
         if !tx_ctx.has_fd(fd) {
-            return Err(6); // CKB_INVALID_FD
+            return Err(CKB_INVALID_FD);
         }
         if !tx_ctx.chech_other_fd(fd) {
-            return Err(7); // OTHER_END_CLOSED
+            return Err(CKB_OTHER_END_CLOSED);
         }
         Ok(())
     }

@@ -17,9 +17,15 @@ pub const SYS_LOAD_CELL_DATA_AS_CODE: u64 = 2091;
 pub const SYS_LOAD_CELL_DATA: u64 = 2092;
 pub const SYS_DEBUG: u64 = 2177;
 
+// https://github.com/nervosnetwork/ckb-c-stdlib/blob/744c62e5259a5ab826e1a02ca36a811c9905f010/ckb_consts.h#L32
 pub const CKB_SUCCESS: i32 = 0;
 pub const CKB_INDEX_OUT_OF_BOUND: i32 = 1;
 pub const CKB_ITEM_MISSING: i32 = 2;
+pub const CKB_WAIT_FAILURE: i32 = 5;
+pub const CKB_INVALID_FD: i32 = 6;
+pub const CKB_OTHER_END_CLOSED: i32 = 7;
+pub const CKB_MAX_VMS_SPAWNED: i32 = 8;
+pub const CKB_MAX_FDS_CREATED: i32 = 9;
 
 pub const SOURCE_INPUT: u64 = 1;
 pub const SOURCE_OUTPUT: u64 = 2;
