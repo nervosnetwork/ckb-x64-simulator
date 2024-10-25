@@ -1,0 +1,11 @@
+[package]
+name = "exec-parent"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ckb-std-wrapper = { path = "../../libs/ckb-std-wrapper" }
+
+[features]
+native-simulator = ["ckb-std-wrapper/native-simulator"]
+

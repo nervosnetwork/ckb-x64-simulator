@@ -1,0 +1,8 @@
+[package]
+name = "spawn_cmd"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+num-traits = {version = "0.2.19", default-features = false}
+num-derive = "0.4.2"

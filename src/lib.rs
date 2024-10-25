@@ -1,5 +1,15 @@
 pub mod constants;
 
+pub mod spawn;
+pub use spawn::*;
+
+mod global_data;
+mod simulator_context;
+mod utils;
+
+use global_data::GlobalData;
+use simulator_context::SimContext;
+
 #[macro_use]
 extern crate lazy_static;
 
@@ -20,7 +30,7 @@ use constants::{
 };
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_void};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -56,7 +66,7 @@ lazy_static! {
 }
 
 fn assert_vm_version() {
-    if SETUP.vm_version != 1 {
+    if SETUP.vm_version == 0 {
         panic!(
             "Currently running setup vm_version({}) not support this syscall",
             SETUP.vm_version
@@ -94,45 +104,37 @@ pub extern "C" fn ckb_exec_cell(
 ) -> c_int {
     assert_vm_version();
 
-    let mut filename = None;
-    for ht in [hash_type, 0xFF] {
-        let code_hash = unsafe { std::slice::from_raw_parts(code_hash, 32) };
-        let mut buffer = vec![];
-        buffer.extend_from_slice(code_hash);
-        buffer.push(ht);
-        buffer.extend_from_slice(&offset.to_be_bytes()[..]);
-        buffer.extend_from_slice(&length.to_be_bytes()[..]);
-        let key = format!("0x{}", faster_hex::hex_string(&buffer));
-        filename = SETUP.native_binaries.get(&key);
-        if filename.is_some() {
-            break;
-        }
-    }
-    let filename = filename.expect("cannot locate native binary for ckb_exec syscall!");
+    let sim_path =
+        utils::get_simulator_path(utils::to_array(code_hash, 32), hash_type, offset, length);
+    let sim_path = sim_path.expect("cannot locate native binary for ckb_exec syscall!");
 
     match SETUP.run_type.as_ref().unwrap_or(&RunningType::Executable) {
         RunningType::Executable => {
-            let filename_cstring = CString::new(filename.as_bytes().to_vec()).unwrap();
+            let filename_cstring = CString::new(sim_path.as_bytes().to_vec()).unwrap();
             unsafe {
                 let args = argv as *const *const i8;
                 libc::execvp(filename_cstring.as_ptr(), args)
             }
         }
         RunningType::DynamicLib => {
-            use core::ffi::c_int;
-            type CkbMainFunc<'a> = libloading::Symbol<
-                'a,
-                unsafe extern "C" fn(argc: c_int, argv: *const *const i8) -> i8,
-            >;
+            use utils::CkbNativeSimulator;
 
-            unsafe {
-                let lib = libloading::Library::new(filename).expect("Load library");
-                let func: CkbMainFunc = lib
-                    .get(b"__ckb_std_main")
-                    .expect("load function : __ckb_std_main");
-                let args = argv as *const *const i8;
-                std::process::exit(func(argc, args).into())
-            }
+            let tx_ctx_id = GlobalData::locked().set_tx(simulator_context::SimContext::default());
+            SimContext::update_ctx_id(tx_ctx_id.clone(), None);
+
+            let sim = CkbNativeSimulator::new_by_hash(code_hash, hash_type, offset, length);
+            let args = utils::to_vec_args(argc, argv as *const *const i8);
+
+            let join_handle = {
+                let mut global_data = GlobalData::locked();
+                let sim_ctx = global_data.get_tx_mut(&tx_ctx_id);
+                let child_pid: utils::ProcID = sim_ctx.start_process(&[], move |sim_id, pid| {
+                    sim.update_script_info(sim_id, pid);
+                    sim.ckb_std_main(args)
+                });
+                sim_ctx.exit(&child_pid).unwrap()
+            };
+            join_handle.join().expect("exec dylib") as c_int
         }
     }
 }
@@ -165,8 +167,9 @@ pub extern "C" fn ckb_load_script(ptr: *mut c_void, len: *mut u64, offset: u64) 
 
 #[no_mangle]
 pub extern "C" fn ckb_debug(s: *const c_char) {
-    let message = unsafe { CStr::from_ptr(s) }.to_str().expect("UTF8 error!");
-    println!("Debug message: {}", message);
+    let message = utils::to_c_str(s).to_str().expect("UTF8 error!");
+    // println!("Debug message: {}", message);
+    println!("[contract debug] {}", message);
 }
 
 #[no_mangle]
@@ -378,6 +381,29 @@ extern "C" {
     ) -> c_int;
 }
 
+// TO fix clippy error: clippy::not_unsafe_ptr_arg_deref
+fn rs_simulator_internal_dlopen2(
+    native_library_path: *const u8,
+    code: *const u8,
+    length: u64,
+    aligned_addr: *mut u8,
+    aligned_size: u64,
+    handle: *mut *mut c_void,
+    consumed_size: *mut u64,
+) -> c_int {
+    unsafe {
+        simulator_internal_dlopen2(
+            native_library_path,
+            code,
+            length,
+            aligned_addr,
+            aligned_size,
+            handle,
+            consumed_size,
+        )
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn ckb_dlopen2(
     dep_cell_hash: *const u8,
@@ -387,7 +413,7 @@ pub extern "C" fn ckb_dlopen2(
     handle: *mut *mut c_void,
     consumed_size: *mut u64,
 ) -> c_int {
-    let dep_cell_hash = unsafe { std::slice::from_raw_parts(dep_cell_hash, 32) };
+    let dep_cell_hash = utils::to_array(dep_cell_hash, 32);
     let mut buffer = vec![];
     buffer.extend_from_slice(dep_cell_hash);
     buffer.push(hash_type);
@@ -414,16 +440,24 @@ pub extern "C" fn ckb_dlopen2(
         })
         .expect("cannot locate cell dep");
     let cell_data = cell_dep.data.as_ref();
-    unsafe {
-        simulator_internal_dlopen2(
-            filename.as_str().as_ptr(),
-            cell_data.as_ptr(),
-            cell_data.len() as u64,
-            aligned_addr,
-            aligned_size,
-            handle,
-            consumed_size,
-        )
+    rs_simulator_internal_dlopen2(
+        filename.as_str().as_ptr(),
+        cell_data.as_ptr(),
+        cell_data.len() as u64,
+        aligned_addr,
+        aligned_size,
+        handle,
+        consumed_size,
+    )
+}
+
+#[no_mangle]
+pub extern "C" fn set_script_info(ptr: *const std::ffi::c_void, tx_ctx_id: u64, proc_ctx_id: u64) {
+    if ptr.is_null() && tx_ctx_id == 0 && proc_ctx_id == 0 {
+        GlobalData::clean();
+    } else {
+        GlobalData::set_ptr(ptr);
+        SimContext::update_ctx_id(tx_ctx_id.into(), Some(proc_ctx_id.into()));
     }
 }
 
